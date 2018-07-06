@@ -22,19 +22,19 @@ Config::Config()
 
     if (!SPIFFS.begin())
     {
-        dbprintln("Config: formatting SPIFFS...");
+        dlog.info("Config", "formatting SPIFFS...");
         if (SPIFFS.format())
         {
-            dbprintln("Config: Done!");
+            dlog.info("Config", "Done!");
         }
         else
         {
-            dbprintln("Config: FAILED!!!!!!");
+            dlog.info("Config", "FAILED!!!!!!");
         }
 
         if (!SPIFFS.begin())
         {
-            dbprintln("Config: SPIFFS.begin() failed!");
+            dlog.info("Config", "SPIFFS.begin() failed!");
         }
     }
 }
@@ -54,7 +54,7 @@ const char* Config::getURL()
 
 void Config::setURL(const char* url)
 {
-    dbprintf("Config::setURL: %s\n", url);
+    dlog.info("Config", "::setURL: %s\n", url);
     char* old_url = _url;
     size_t len = strlen(url);
     char* new_url = (char*) malloc(len + 1);
@@ -62,7 +62,7 @@ void Config::setURL(const char* url)
     _url = new_url;
     if (old_url)
     {
-        dbprintf("Config::setURL: freeing old url: '%s'\n", old_url);
+        dlog.info("Config", "::setURL: freeing old url: '%s'\n", old_url);
         free(old_url);
     }
 }
@@ -74,7 +74,7 @@ const char* Config::getFingerprint()
 
 void Config::setFingerprint(const char* fingerprint)
 {
-    dbprintf("Config::setFingerprint: %s\n", fingerprint);
+    dlog.info("Config", "::setFingerprint: %s\n", fingerprint);
     char* old_fingerprint = _fingerprint;
     size_t len = strlen(fingerprint);
     char* new_fingerprint = (char*) malloc(len + 1);
@@ -82,31 +82,31 @@ void Config::setFingerprint(const char* fingerprint)
     _fingerprint = new_fingerprint;
     if (old_fingerprint)
     {
-        dbprintf("Config::setFingerprint: freeing old fingerprint: '%s'\n", old_fingerprint);
+        dlog.info("Config", "::setFingerprint: freeing old fingerprint: '%s'\n", old_fingerprint);
         free(old_fingerprint);
     }
 }
 
 bool Config::save()
 {
-    dbprintln("Config::save starting!");
+    dlog.info("Config", "::save starting!");
     if (!_url)
     {
-        dbprintln("Config::save: fail: url not set!");
+        dlog.info("Config", "::save: fail: url not set!");
         return false;
     }
 
     File file = SPIFFS.open(config_filename, "w");
     if (!file)
     {
-        dbprintf("Config::save: failed to open '%s' for writing!\n", config_filename);
+        dlog.info("Config", "::save: failed to open '%s' for writing!\n", config_filename);
         return false;
     }
 
-    dbprintf("Config::save: writing leading magic: 0x%08x\n", config_magic);
+    dlog.info("Config", "::save: writing leading magic: 0x%08x\n", config_magic);
     if (file.write((const uint8_t*)&config_magic, sizeof(config_magic)) != sizeof(config_magic))
     {
-        dbprintln("Config::save failed to write leading magic!");
+        dlog.info("Config", "::save failed to write leading magic!");
         return false;
     }
 
@@ -115,7 +115,7 @@ bool Config::save()
     //
     if (!writeString(file, _url))
     {
-        dbprintln("failed to write URL!");
+        dlog.info("Config", "::save: failed to write URL!");
         return false;
     }
 
@@ -124,30 +124,30 @@ bool Config::save()
     //
     if (!writeString(file, _fingerprint))
     {
-        dbprintln("failed to write fingerprint!");
+        dlog.info("Config", "::save: failed to write fingerprint!");
         return false;
     }
 
-    dbprintf("Config::save: writing trailing magic: 0x%08x\n", config_magic);
+    dlog.info("Config", "::save: writing trailing magic: 0x%08x\n", config_magic);
     if (file.write((const uint8_t*)&config_magic, sizeof(config_magic)) != sizeof(config_magic))
     {
-        dbprintln("Config::save failed to write trailing magic!");
+        dlog.info("Config", "::save failed to write trailing magic!");
         return false;
     }
 
     file.close();
-    dbprintln("Config::save success!");
+    dlog.info("Config", "::save success!");
     return true;
 }
 
 bool Config::load()
 {
-    dbprintln("Config::load starting!");
+    dlog.info("Config", "::load starting!");
 
     File file = SPIFFS.open(config_filename, "r");
     if (!file)
     {
-        dbprintf("Config::load: failed to open '%s' for reading!\n", config_filename);
+        dlog.info("Config", "::load: failed to open '%s' for reading!\n", config_filename);
         return false;
     }
 
@@ -155,12 +155,12 @@ bool Config::load()
     size_t   bytes_read = file.read((uint8_t*)&magic, sizeof(magic));
     if (bytes_read != sizeof(magic))
     {
-        dbprintf("Config::load: failed to read leading magic, expected %d got %d bytes!\n", sizeof(magic), bytes_read);
+        dlog.info("Config", "::load: failed to read leading magic, expected %d got %d bytes!\n", sizeof(magic), bytes_read);
         return false;
     }
     else if (magic != config_magic)
     {
-        dbprintf("Config::load: leading magic mismatch! expected 0x%08x got 0x%08x\n", sizeof(magic), bytes_read);
+        dlog.info("Config", "::load: leading magic mismatch! expected 0x%08x got 0x%08x\n", sizeof(magic), bytes_read);
         return false;
     }
 
@@ -173,7 +173,7 @@ bool Config::load()
         return false;
     }
 
-    dbprintf("Config::load: new_url: %s\n", new_url);
+    dlog.info("Config", "::load: new_url: %s\n", new_url);
 
     //
     // Load fingerprint
@@ -184,7 +184,7 @@ bool Config::load()
         return false;
     }
 
-    dbprintf("Config::load: new_fingerprint: %s\n", new_fingerprint);
+    dlog.info("Config", "::load: new_fingerprint: %s\n", new_fingerprint);
 
     //
     // Trailing magic
@@ -192,12 +192,12 @@ bool Config::load()
     bytes_read = file.read((uint8_t*)&magic, sizeof(magic));
     if (bytes_read != sizeof(magic))
     {
-        dbprintf("Config::load: failed to read trailing magic, expected %d got %d bytes!\n", sizeof(magic), bytes_read);
+        dlog.info("Config", "::load: failed to read trailing magic, expected %d got %d bytes!\n", sizeof(magic), bytes_read);
         return false;
     }
     else if (magic != config_magic)
     {
-        dbprintf("Config::load: trailing magic mismatch! expected 0x%08x got 0x%08x\n", sizeof(magic), bytes_read);
+        dlog.info("Config", "::load: trailing magic mismatch! expected 0x%08x got 0x%08x\n", sizeof(magic), bytes_read);
         return false;
     }
 
@@ -205,7 +205,7 @@ bool Config::load()
     _url = new_url;
     if (old)
     {
-        dbprintf("Config::load freeing old url: '%s'\n", old);
+        dlog.info("Config", "::load freeing old url: '%s'\n", old);
         free(old);
     }
 
@@ -213,11 +213,11 @@ bool Config::load()
     _fingerprint = new_fingerprint;
     if (old)
     {
-        dbprintf("Config::load freeing old fingerprint: '%s'\n", old);
+        dlog.info("Config", "::load freeing old fingerprint: '%s'\n", old);
         free(old);
     }
 
-    dbprintln("Config::load success!");
+    dlog.info("Config", "::load success!");
     return true;
 }
 
@@ -228,7 +228,7 @@ bool Config::writeString(File& file, const char* value)
     //
     if (file.write(config_string_id) != 1)
     {
-        dbprintln("Config::writeString failed to write ID!");
+        dlog.info("Config", "::writeString failed to write ID!");
         return false;
     }
 
@@ -238,7 +238,7 @@ bool Config::writeString(File& file, const char* value)
     size_t len = strlen(value);
     if (file.write((uint8_t*)&len, sizeof(len)) != sizeof(len))
     {
-        dbprintf("Config::writeString failed to write string length (%d)!\n", len);
+        dlog.info("Config", "::writeString failed to write string length (%d)!\n", len);
         return false;
     }
 
@@ -247,7 +247,7 @@ bool Config::writeString(File& file, const char* value)
     //
     if (file.write((const uint8_t*)value, len) != len)
     {
-        dbprintf("Config::writeString failed to write string (%s)!\n", value);
+        dlog.info("Config", "::writeString failed to write string (%s)!\n", value);
         return false;
     }
 
@@ -262,7 +262,7 @@ char* Config::readString(File& file)
     int id = file.read();
     if (id != config_string_id)
     {
-        dbprintf("Config::readString: failed to read string id, expected %u got %d\n", config_string_id, id);
+        dlog.info("Config", "::readString: failed to read string id, expected %u got %d\n", config_string_id, id);
         return NULL;
     }
 
@@ -273,21 +273,21 @@ char* Config::readString(File& file)
     size_t bytes_read = file.read((uint8_t*)&len, sizeof(len));
     if (bytes_read != sizeof(len))
     {
-        dbprintf("Config::load: failed to read string length, expected %d got %d bytes!\n", sizeof(len), bytes_read);
+        dlog.info("Config", "::load: failed to read string length, expected %d got %d bytes!\n", sizeof(len), bytes_read);
         return NULL;
     }
 
     char* value = (char*)malloc(len+1);
     if (!value)
     {
-        dbprintf("Config::load: failed to allocate buffer of %u bytes\n", len);
+        dlog.info("Config", "::load: failed to allocate buffer of %u bytes\n", len);
         return NULL;
     }
 
     bytes_read = file.read((uint8_t*)value, len);
     if (bytes_read != len)
     {
-        dbprintf("Config::load: failed to read host, expected %d got %d bytes!\n", len, bytes_read);
+        dlog.info("Config", "::load: failed to read host, expected %d got %d bytes!\n", len, bytes_read);
         free(value);
         return NULL;
     }

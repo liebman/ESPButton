@@ -1,9 +1,11 @@
 #include "ESPButton.h"
-#define DEBUG
 #include "Logger.h"
+#include "DLogPrintWriter.h"
+
+DLog& dlog = DLog::getLog();
 
 Ticker timer;
-RGBLED led(PIN_RED, PIN_GREEN, PIN_BLUE, CommonElectrode::anode);
+RGBLED led(PIN_RED, PIN_GREEN, PIN_BLUE);
 Config config;
 
 volatile ColorBlink color_blink;
@@ -15,8 +17,7 @@ bool force_config;
 
 void setColor(const RGBColor *c)
 {
-    led(c->red, c->green, c->blue);
-    led.show();
+    led.set(c);
 }
 
 void blinkHandler()
@@ -101,10 +102,10 @@ void doIT()
         http.begin(url);
     }
 
-    dbprintf("doIT: Starting Request: '%s'\n", config.getURL());
+    dlog.info("doIt", "Starting Request: '%s'", config.getURL());
     int code = http.GET();
-    dbprintf("doIT http code: %d\n", code);
-    dbprintf("doIT: size: %d\n", http.getSize());
+    dlog.info("doIt", "http code: %d", code);
+    dlog.info("doIt", "size: %d\n", http.getSize());
 
     http.end();
 
@@ -208,11 +209,11 @@ void initWifi()
 
         const char* ota_url = otaurl.getValue();
         const char* ota_fp  = otafp.getValue();
-        dbprintf("OTA settings:  url: '%s' fp: '%s'\n", ota_url, ota_fp);
+        dlog.info("initWifi", "OTA settings:  url: '%s' fp: '%s'\n", ota_url, ota_fp);
 
         if (ota_url != NULL && *ota_url != '\0')
         {
-            dbprintf("OTA Update: from %s\n", ota_url);
+            dlog.info("initWifi", "OTA Update: from %s\n", ota_url);
             t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
             if (strncmp(ota_url, "https:", 6) == 0)
             {
@@ -226,16 +227,16 @@ void initWifi()
             switch(ret)
             {
                 case HTTP_UPDATE_FAILED:
-                    dbprintln("OTA update failed!");
+                    dlog.info("initWifi", "OTA update failed!");
                     break;
                 case HTTP_UPDATE_NO_UPDATES:
-                    dbprintln("OTA no updates!");
+                    dlog.info("initWifi", "OTA no updates!");
                     break;
                 case HTTP_UPDATE_OK:
-                    dbprintln("OTA update OK!"); // may not be reached as ESP is restarted!
+                    dlog.info("initWifi", "OTA update OK!"); // may not be reached as ESP is restarted!
                     break;
                 default:
-                    dbprintf("OTA update WTF? unexpected return code: %d\n", ret);
+                    dlog.info("initWifi", "OTA update WTF? unexpected return code: %d\n", ret);
                     break;
             }
         }
@@ -245,9 +246,11 @@ void initWifi()
 
 void setup()
 {
-    dbbegin(115200);
-    dbprintln("\n\n\nStartup!");
-    dbprintf("Version: %s\n", ESP_BUTTON_VERSION);
+    Serial.begin(76800);
+    dlog.begin(new DLogPrintWriter(Serial));
+    //dlog.setLevel(DLOG_LEVEL_DEBUG);
+    dlog.info("setup", "Startup!");
+    dlog.info("setup", "Version: %s", ESP_BUTTON_VERSION);
 
     pinMode(PIN_TRGR,     INPUT_PULLUP);
     pinMode(PIN_ARM,      INPUT_PULLUP);
@@ -270,8 +273,8 @@ void setup()
 
     configTime(0, 0, DEFAULT_NTP_SERVER, NULL, NULL);
 
-    dbprintf("setup: url:         '%s'\n", config.getURL());
-    dbprintf("setup: fingerprint: '%s'\n", config.getFingerprint());
+    dlog.info("setup", "url:         '%s'", config.getURL());
+    dlog.info("setup", "fingerprint: '%s'", config.getFingerprint());
 
     armed     = false;
     triggered = false;
@@ -285,7 +288,7 @@ void loop()
 {
     if (triggered)
     {
-        dbprintf("TRIGGERED: millis: %lu\n", millis());
+        dlog.info("loop", "TRIGGERED: millis: %lu", millis());
         doIT();
         triggered = false;
     }

@@ -6,7 +6,7 @@
 #include "ESP8266httpUpdate.h"
 #include "WiFiManager.h"
 #include "ESP8266HTTPClient.h"
-#include "RGBLED.hpp"
+#include "RGBLED.h"
 #include "Ticker.h"
 #include "Config.h"
 
@@ -21,27 +21,13 @@
 #define PIN_ARM   0
 #define PIN_TRGR  14
 
-typedef struct rgb_color
-{
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-} RGBColor;
-
 typedef struct color_blink
 {
-	const RGBColor *on_color;
-	float           on_time;
-	const RGBColor *off_color;
-	float           off_time;
-	bool            state;
+    const RGBColor *on_color;
+    float           on_time;
+    const RGBColor *off_color;
+    float           off_time;
+    bool            state;
 } ColorBlink;
-
-const RGBColor black  = {0,0,0};
-const RGBColor red    = {255,0,0};
-const RGBColor green  = {0,255,0};
-const RGBColor blue   = {0,0,255};
-const RGBColor yellow = {255,255,0};
-const RGBColor orange = {255,127,0};
 
 #endif /* _ESPButton_H_ */
