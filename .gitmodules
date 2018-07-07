@@ -6,5 +6,5 @@
 	url = https://github.com/liebman/DLog.git
 [submodule "libraries/WiFiManager"]
 	path = libraries/WiFiManager
-	url = https://github.com/tzapu/WiFiManager.git
-	branch = development
+	url = https://github.com/liebman/WiFiManager.git
+	branch = only_support_wps_if_no_extra_4k_heap_defined
