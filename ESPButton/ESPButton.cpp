@@ -2,6 +2,11 @@
 #include "Logger.h"
 #include "DLogPrintWriter.h"
 
+#include <FS.h>
+#include <time.h>
+
+BearSSL::CertStore certStore;
+
 DLog& dlog = DLog::getLog();
 
 Ticker timer;
@@ -14,6 +19,54 @@ Ticker debounce;
 volatile bool triggered;
 
 bool force_config;
+
+class SPIFFSCertStoreFile : public BearSSL::CertStoreFile {
+  public:
+    SPIFFSCertStoreFile(const char *name) {
+      _name = name;
+    };
+    virtual ~SPIFFSCertStoreFile() override {};
+
+    // The main API
+    virtual bool open(bool write = false) override {
+      _file = SPIFFS.open(_name, write ? "w" : "r");
+      return _file;
+    }
+    virtual bool seek(size_t absolute_pos) override {
+      return _file.seek(absolute_pos, SeekSet);
+    }
+    virtual ssize_t read(void *dest, size_t bytes) override {
+      return _file.readBytes((char*)dest, bytes);
+    }
+    virtual ssize_t write(void *dest, size_t bytes) override {
+      return _file.write((uint8_t*)dest, bytes);
+    }
+    virtual void close() override {
+      _file.close();
+    }
+
+  private:
+    File _file;
+    const char *_name;
+};
+
+SPIFFSCertStoreFile certs_idx("/certs.idx");
+SPIFFSCertStoreFile certs_ar("/certs.ar");
+
+// Set time via NTP, as required for x.509 validation
+void setClock() {
+  configTime(0, 0, DEFAULT_NTP_SERVER, NULL, NULL);
+
+  dlog.info("setCock", "Waiting for NTP time sync...");
+  time_t now = time(nullptr);
+  while (now < 8 * 3600 * 2) {
+    delay(500);
+    now = time(nullptr);
+  }
+  struct tm timeinfo;
+  gmtime_r(&now, &timeinfo);
+  dlog.info("setCock", "Current time: %s", asctime(&timeinfo));
+}
 
 void setColor(const RGBColor *c)
 {
@@ -85,35 +138,49 @@ void successColor()
     setColor(&green);
 }
 
+bool startsWith(const char *pre, const char *str)
+{
+    size_t lenpre = strlen(pre),
+           lenstr = strlen(str);
+    return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
+}
+
 void doIT()
 {
     const char* url = config.getURL();
-    const char* fingerprint = config.getFingerprint();
 
-    HTTPClient http;
-    http.setUserAgent("ESPButton/1.1");
-
-    if (fingerprint && *fingerprint)
+    WiFiClient *client = nullptr;
+    if (startsWith("https:", url))
     {
-        http.begin(url, fingerprint);
+        BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
+        // Integrate the cert store with this connection
+        bear->setCertStore(&certStore);
+        client = bear;
     }
     else
     {
-        http.begin(url);
+        client = new WiFiClient;
     }
+    HTTPClient http;
+    http.setUserAgent("ESPButton/1.1");
+
+    http.begin(*client, url);
 
     dlog.info("doIt", "Starting Request: '%s'", config.getURL());
     int code = http.GET();
     dlog.info("doIt", "http code: %d", code);
-    dlog.info("doIt", "size: %d\n", http.getSize());
+    dlog.info("doIt", "size: %d", http.getSize());
 
     http.end();
+
+    delete client;
 
     if (code != 200)
     {
         failureColor();
         return;
     }
+
     successColor();
 }
 
@@ -184,7 +251,6 @@ void initWifi()
     });
 
     static bool save_config  = false;
-
     wm.setSaveConfigCallback([]()
     {
         save_config = true;
@@ -201,6 +267,11 @@ void initWifi()
         wm.autoConnect(ssid.c_str(), NULL);
     }
 
+    while (WiFi.status() != WL_CONNECTED) {
+        dlog.warning("initWifi", "still not connected, waiting...");
+        delay(1000);
+    }
+
     if (save_config)
     {
         config.setURL(url.getValue());
@@ -209,11 +280,11 @@ void initWifi()
 
         const char* ota_url = otaurl.getValue();
         const char* ota_fp  = otafp.getValue();
-        dlog.info("initWifi", "OTA settings:  url: '%s' fp: '%s'\n", ota_url, ota_fp);
+        dlog.info("initWifi", "OTA settings:  url: '%s' fp: '%s'", ota_url, ota_fp);
 
         if (ota_url != NULL && *ota_url != '\0')
         {
-            dlog.info("initWifi", "OTA Update: from %s\n", ota_url);
+            dlog.info("initWifi", "OTA Update: from %s", ota_url);
             t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
             if (strncmp(ota_url, "https:", 6) == 0)
             {
@@ -236,7 +307,7 @@ void initWifi()
                     dlog.info("initWifi", "OTA update OK!"); // may not be reached as ESP is restarted!
                     break;
                 default:
-                    dlog.info("initWifi", "OTA update WTF? unexpected return code: %d\n", ret);
+                    dlog.info("initWifi", "OTA update WTF? unexpected return code: %d", ret);
                     break;
             }
         }
@@ -257,6 +328,11 @@ void setup()
 
     setColor(&blue);
 
+    if (SPIFFS.begin())
+    {
+        dlog.error("setup", "SPIFFS begin failed!!!");
+    }
+
     force_config = false;
 
     if (digitalRead(PIN_TRGR) == 0)
@@ -271,13 +347,22 @@ void setup()
 
     initWifi();
 
-    configTime(0, 0, DEFAULT_NTP_SERVER, NULL, NULL);
+    setClock();
 
     dlog.info("setup", "url:         '%s'", config.getURL());
     dlog.info("setup", "fingerprint: '%s'", config.getFingerprint());
 
     armed     = false;
     triggered = false;
+
+    setClock(); // Required for X.509 validation
+
+    int numCerts = certStore.initCertStore(&certs_idx, &certs_ar);
+    dlog.info("setup", "Number of CA certs read: %d", numCerts);
+    if (numCerts == 0)
+    {
+      dlog.error("setup", "No certs found. Did you run certs-from-mozill.py and upload the SPIFFS directory before running?");
+    }
 
     readyColor();
     attachInterrupt(digitalPinToInterrupt(PIN_TRGR), &trigger, FALLING);
