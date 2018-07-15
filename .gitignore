@@ -4,6 +4,7 @@
 */.project
 */.cproject
 */.settings
+*/.pydevproject
 */Release
 */Debug
 */libraries
@@ -13,3 +14,4 @@
 spec.d
 /RemoteSystemsTempFiles
 /tools
+/ESPButton/data

@@ -65,15 +65,15 @@ void setClock() {
   }
   struct tm timeinfo;
   gmtime_r(&now, &timeinfo);
-  dlog.info("setCock", "Current time: %s", asctime(&timeinfo));
+  dlog.info("setCock", "Current UTC time: %s", asctime(&timeinfo));
 }
 
-void setColor(const RGBColor *c)
+void ICACHE_RAM_ATTR setColor(const RGBColor *c)
 {
     led.set(c);
 }
 
-void blinkHandler()
+void ICACHE_RAM_ATTR blinkHandler()
 {
     if (color_blink.state)
     {
@@ -88,7 +88,7 @@ void blinkHandler()
     color_blink.state = !color_blink.state;
 }
 
-void alternateColors(const RGBColor *on_color, float on_time,
+void ICACHE_RAM_ATTR alternateColors(const RGBColor *on_color, float on_time,
         const RGBColor *off_color, float off_time)
 {
     timer.detach();
@@ -116,29 +116,29 @@ void readyColor()
     alternateColors(&blue, 0.125, &black, 20.0);
 }
 
-void armedColor()
+void ICACHE_RAM_ATTR armedColor()
 {
     alternateColors(&yellow, 0.25, &black, 0.25);
 }
 
-void triggeredColor()
+void ICACHE_RAM_ATTR triggeredColor()
 {
     alternateColors(&green, 0.125, &black, 0.125);
 }
 
-void failureColor()
+void ICACHE_RAM_ATTR failureColor()
 {
     timer.detach();
     setColor(&red);
 }
 
-void successColor()
+void ICACHE_RAM_ATTR successColor()
 {
     timer.detach();
     setColor(&green);
 }
 
-bool startsWith(const char *pre, const char *str)
+bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
 {
     size_t lenpre = strlen(pre),
            lenstr = strlen(str);
@@ -161,18 +161,19 @@ void doIT()
     {
         client = new WiFiClient;
     }
-    HTTPClient http;
-    http.setUserAgent("ESPButton/1.1");
+    HTTPClient *http = new HTTPClient;
+    http->setUserAgent("ESPButton/1.1");
 
-    http.begin(*client, url);
+    http->begin(*client, url);
 
     dlog.info("doIt", "Starting Request: '%s'", config.getURL());
-    int code = http.GET();
+    int code = http->GET();
     dlog.info("doIt", "http code: %d", code);
-    dlog.info("doIt", "size: %d", http.getSize());
+    dlog.info("doIt", "size: %d", http->getSize());
 
-    http.end();
+    http->end();
 
+    delete http;
     delete client;
 
     if (code != 200)
@@ -188,7 +189,7 @@ void doIT()
 // If after the debounce timer expires the state is still the same then
 // we can arm or disarm
 //
-void debounceArmDisarm(int state)
+void ICACHE_RAM_ATTR debounceArmDisarm(int state)
 {
     if (digitalRead(PIN_ARM) == state)
     {
@@ -208,7 +209,7 @@ void debounceArmDisarm(int state)
 //
 // Called on change of ARM pin, use debounce timer to debounce state change.
 //
-void arm()
+void ICACHE_RAM_ATTR arm()
 {
     //
     // Use a timer to debounce, could be arm or disarm
@@ -221,7 +222,7 @@ void arm()
 // Called on falling edge of trigger pin, no debounce here as we mark as disarmed here
 // and  the action (web request) will take longer than the bouncing.
 //
-void trigger()
+void ICACHE_RAM_ATTR trigger()
 {
     if (armed)
     {
@@ -346,6 +347,7 @@ void setup()
     }
 
     initWifi();
+    setColor(&blue);
 
     setClock();
 
@@ -354,8 +356,6 @@ void setup()
 
     armed     = false;
     triggered = false;
-
-    setClock(); // Required for X.509 validation
 
     int numCerts = certStore.initCertStore(&certs_idx, &certs_ar);
     dlog.info("setup", "Number of CA certs read: %d", numCerts);
