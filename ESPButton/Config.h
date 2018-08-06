@@ -7,29 +7,23 @@
 
 #ifndef CONFIG_H_
 #define CONFIG_H_
-#include "Arduino.h"
-#include "FS.h"
 
 class Config {
 public:
 	Config();
 	virtual     ~Config();
-
+	void        begin();
 	const char* getURL();
-	void        setURL(const char* url);
-	const char* getFingerprint();
-	void        setFingerprint(const char* fingerprint);
+	void        setURL(const char* server);
+    const char* getNTPServer();
+    void        setNTPServer(const char* server);
 
 	bool        save();
 	bool        load();
 
-protected:
-	bool   writeString(File& file, const char* value);
-	char*  readString(File& file);
-
 private:
 	char*    _url;
-	char*    _fingerprint;
+	char*    _ntp_server;
 };
 
 #endif /* CONFIG_H_ */

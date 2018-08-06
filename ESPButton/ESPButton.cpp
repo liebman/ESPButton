@@ -53,20 +53,36 @@ class SPIFFSCertStoreFile : public BearSSL::CertStoreFile {
 SPIFFSCertStoreFile certs_idx("/certs.idx");
 SPIFFSCertStoreFile certs_ar("/certs.ar");
 
-// Set time via NTP, as required for x.509 validation
-void setClock() {
-  configTime(0, 0, DEFAULT_NTP_SERVER, NULL, NULL);
 
-  dlog.info("setCock", "Waiting for NTP time sync...");
-  time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {
-    delay(500);
-    now = time(nullptr);
-  }
-  struct tm timeinfo;
-  gmtime_r(&now, &timeinfo);
-  dlog.info("setCock", "Current UTC time: %s", asctime(&timeinfo));
+// Set time via NTP, as required for x.509 validation
+void setClock()
+{
+    const char* ntp_server = config.getNTPServer();
+    IPAddress address;
+    while(!WiFi.hostByName(ntp_server, address))
+    {
+        dlog.error("setClock", "FAILED to lookup address for: '%s', retrying...", ntp_server);
+        delay(1000);
+    }
+
+    dlog.info("setClock", "DNS lookup gives: %d.%d.%d.%d", address[0], address[1], address[2], address[3]);
+
+    dlog.info("setClock", "setting NTP server to '%s'", ntp_server);
+    configTime(0, 0, ntp_server, nullptr, nullptr);
+
+    dlog.info("setCock", "Waiting for NTP time sync...");
+    time_t now = time(nullptr);
+    while (now < 8 * 3600 * 2)
+    {
+        dlog.trace("setClock", "now: %ul", now);
+        delay(500);
+        now = time(nullptr);
+    }
+    struct tm timeinfo;
+    gmtime_r(&now, &timeinfo);
+    dlog.info("setCock", "Current UTC time: %s", asctime(&timeinfo));
 }
+
 
 void ICACHE_RAM_ATTR setColor(const RGBColor *c)
 {
@@ -113,7 +129,12 @@ void configColor()
 
 void readyColor()
 {
-    alternateColors(&blue, 0.125, &black, 20.0);
+    alternateColors(&blue, 0.1, &black, 300.0);
+}
+
+void updateColor()
+{
+    alternateColors(&blue, 0.5, &black, 0.5);
 }
 
 void ICACHE_RAM_ATTR armedColor()
@@ -148,6 +169,7 @@ bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
 void doIT()
 {
     const char* url = config.getURL();
+    const char *keys[] = {"Location"};
 
     WiFiClient *client = nullptr;
     if (startsWith("https:", url))
@@ -163,12 +185,28 @@ void doIT()
     }
     HTTPClient *http = new HTTPClient;
     http->setUserAgent("ESPButton/1.1");
-
+    http->collectHeaders(keys, 1);
     http->begin(*client, url);
 
     dlog.info("doIt", "Starting Request: '%s'", config.getURL());
     int code = http->GET();
     dlog.info("doIt", "http code: %d", code);
+    while (code == 302 || code == 301)
+    {
+        String location = http->header("Location");
+        dlog.info("doIt", "Location: %s", location.c_str());
+        http->end();
+        if (http->setURL(location))
+        {
+            code = http->GET();
+        }
+        else
+        {
+            dlog.error("doIt", "Bad redirect location: %s", location.c_str());
+            code = 500;
+        }
+        dlog.info("doIt", "redirect http code: %d", code);
+    }
     dlog.info("doIt", "size: %d", http->getSize());
 
     http->end();
@@ -235,16 +273,15 @@ void ICACHE_RAM_ATTR trigger()
 void initWifi()
 {
     WiFiManager wm;
+    wm.setDebugOutput(false);
 
     WiFiManagerParameter url("URL", "URL", config.getURL(), 1024);
     wm.addParameter(&url);
-    WiFiManagerParameter fingerprint("Fingerprint", "Fingerprint", config.getFingerprint(), 128);
-    wm.addParameter(&fingerprint);
+    WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
+    wm.addParameter(&ntp);
 
     WiFiManagerParameter otaurl("OTAURL", "OTA URL", "", 1024);
     wm.addParameter(&otaurl);
-    WiFiManagerParameter otafp("OTAFingerprint", "OTA FP", "*", 128);
-    wm.addParameter(&otafp);
 
     wm.setAPCallback([](WiFiManager *)
     {
@@ -276,25 +313,33 @@ void initWifi()
     if (save_config)
     {
         config.setURL(url.getValue());
-        config.setFingerprint(fingerprint.getValue());
+        config.setNTPServer(ntp.getValue());
         config.save();
 
         const char* ota_url = otaurl.getValue();
-        const char* ota_fp  = otafp.getValue();
-        dlog.info("initWifi", "OTA settings:  url: '%s' fp: '%s'", ota_url, ota_fp);
+        dlog.info("initWifi", "OTA settings:  url: '%s'", ota_url);
 
         if (ota_url != NULL && *ota_url != '\0')
         {
             dlog.info("initWifi", "OTA Update: from %s", ota_url);
+            updateColor();
+            ESPhttpUpdate.followRedirects(true);
             t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
+
+            WiFiClient *client = nullptr;
             if (strncmp(ota_url, "https:", 6) == 0)
             {
-                ret = ESPhttpUpdate.update(ota_url, ESP_BUTTON_VERSION, otafp.getValue());
+                BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
+                // Integrate the cert store with this connection
+                bear->setCertStore(&certStore);
+                client = bear;
             }
             else
             {
-                ret = ESPhttpUpdate.update(ota_url, ESP_BUTTON_VERSION);
+                client = new WiFiClient;
             }
+
+            ret = ESPhttpUpdate.update(*client, ota_url, ESP_BUTTON_VERSION);
 
             switch(ret)
             {
@@ -311,9 +356,10 @@ void initWifi()
                     dlog.info("initWifi", "OTA update WTF? unexpected return code: %d", ret);
                     break;
             }
+
+            delete client;
         }
     }
-
 }
 
 void setup()
@@ -327,12 +373,14 @@ void setup()
     pinMode(PIN_TRGR,     INPUT_PULLUP);
     pinMode(PIN_ARM,      INPUT_PULLUP);
 
-    setColor(&blue);
+    startupColor();
 
     if (SPIFFS.begin())
     {
         dlog.error("setup", "SPIFFS begin failed!!!");
     }
+
+    config.begin();
 
     force_config = false;
 
@@ -347,12 +395,11 @@ void setup()
     }
 
     initWifi();
-    setColor(&blue);
+    startupColor();
 
     setClock();
 
     dlog.info("setup", "url:         '%s'", config.getURL());
-    dlog.info("setup", "fingerprint: '%s'", config.getFingerprint());
 
     armed     = false;
     triggered = false;

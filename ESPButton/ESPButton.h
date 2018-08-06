@@ -11,7 +11,7 @@
 #include "Config.h"
 
 #define DEFAULT_NTP_SERVER     "0.zoddotcom.pool.ntp.org"
-#define ESP_BUTTON_VERSION "0.1.1"
+#define ESP_BUTTON_VERSION "0.3.2"
 
 #define DEBOUNCE_DELAY 20
 
