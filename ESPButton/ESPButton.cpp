@@ -305,6 +305,8 @@ void initWifi()
         wm.autoConnect(ssid.c_str(), NULL);
     }
 
+    WiFi.mode(WIFI_STA);
+
     while (WiFi.status() != WL_CONNECTED) {
         dlog.warning("initWifi", "still not connected, waiting...");
         delay(1000);
