@@ -169,7 +169,6 @@ bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
 void doIT()
 {
     const char* url = config.getURL();
-    const char *keys[] = {"Location"};
 
     WiFiClient *client = nullptr;
     if (startsWith("https:", url))
@@ -185,28 +184,12 @@ void doIT()
     }
     HTTPClient *http = new HTTPClient;
     http->setUserAgent("ESPButton/1.1");
-    http->collectHeaders(keys, 1);
+    http->setFollowRedirects(true);
     http->begin(*client, url);
 
     dlog.info("doIt", "Starting Request: '%s'", config.getURL());
     int code = http->GET();
     dlog.info("doIt", "http code: %d", code);
-    while (code == 302 || code == 301)
-    {
-        String location = http->header("Location");
-        dlog.info("doIt", "Location: %s", location.c_str());
-        http->end();
-        if (http->setURL(location))
-        {
-            code = http->GET();
-        }
-        else
-        {
-            dlog.error("doIt", "Bad redirect location: %s", location.c_str());
-            code = 500;
-        }
-        dlog.info("doIt", "redirect http code: %d", code);
-    }
     dlog.info("doIt", "size: %d", http->getSize());
 
     http->end();
@@ -304,7 +287,7 @@ void initWifi()
     {
         wm.autoConnect(ssid.c_str(), NULL);
     }
-
+    dlog.info("initWifi", "save_config = %d", save_config);
     WiFi.mode(WIFI_STA);
 
     while (WiFi.status() != WL_CONNECTED) {
@@ -327,7 +310,6 @@ void initWifi()
             updateColor();
             ESPhttpUpdate.followRedirects(true);
             t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
-
             WiFiClient *client = nullptr;
             if (strncmp(ota_url, "https:", 6) == 0)
             {
@@ -342,7 +324,6 @@ void initWifi()
             }
 
             ret = ESPhttpUpdate.update(*client, ota_url, ESP_BUTTON_VERSION);
-
             switch(ret)
             {
                 case HTTP_UPDATE_FAILED:
@@ -358,7 +339,6 @@ void initWifi()
                     dlog.info("initWifi", "OTA update WTF? unexpected return code: %d", ret);
                     break;
             }
-
             delete client;
         }
     }
@@ -376,11 +356,6 @@ void setup()
     pinMode(PIN_ARM,      INPUT_PULLUP);
 
     startupColor();
-
-    if (SPIFFS.begin())
-    {
-        dlog.error("setup", "SPIFFS begin failed!!!");
-    }
 
     config.begin();
 

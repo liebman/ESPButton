@@ -12,3 +12,12 @@
 [submodule "libraries/ArduinoJson"]
 	path = libraries/ArduinoJson
 	url = https://github.com/bblanchon/ArduinoJson.git
+[submodule "libraries/ESP8266Audio"]
+	path = libraries/ESP8266Audio
+	url = https://github.com/earlephilhower/ESP8266Audio.git
+[submodule "libraries/ESP8266_Spiram"]
+	path = libraries/ESP8266_Spiram
+	url = https://github.com/Gianbacchio/ESP8266_Spiram
+[submodule "libraries/ESP8266SAM"]
+	path = libraries/ESP8266SAM
+	url = https://github.com/earlephilhower/ESP8266SAM.git
