@@ -1,9 +1,15 @@
 #include "ESPButton.h"
 #include "Logger.h"
 #include "DLogPrintWriter.h"
+#include "AudioOutputI2SNoDAC.h"
+#include <ESP8266SAM.h>
 
 #include <FS.h>
 #include <time.h>
+
+
+AudioOutputI2SNoDAC out;
+ESP8266SAM sam;
 
 BearSSL::CertStore certStore;
 
@@ -15,6 +21,7 @@ Config config;
 
 volatile ColorBlink color_blink;
 volatile bool armed;
+bool was_armed;
 Ticker debounce;
 volatile bool triggered;
 
@@ -53,7 +60,6 @@ class SPIFFSCertStoreFile : public BearSSL::CertStoreFile {
 SPIFFSCertStoreFile certs_idx("/certs.idx");
 SPIFFSCertStoreFile certs_ar("/certs.ar");
 
-
 // Set time via NTP, as required for x.509 validation
 void setClock()
 {
@@ -82,7 +88,6 @@ void setClock()
     gmtime_r(&now, &timeinfo);
     dlog.info("setCock", "Current UTC time: %s", asctime(&timeinfo));
 }
-
 
 void ICACHE_RAM_ATTR setColor(const RGBColor *c)
 {
@@ -168,6 +173,10 @@ bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
 
 void doIT()
 {
+    dlog.info("doIT", "Say: Activating!");
+    sam.Say(&out, "Activating!");
+    dlog.info("doIT", "Say: Activating! - DONE");
+
     const char* url = config.getURL();
 
     WiFiClient *client = nullptr;
@@ -200,9 +209,15 @@ void doIT()
     if (code != 200)
     {
         failureColor();
+        dlog.info("doIT", "Say: Activation Failed!");
+        sam.Say(&out, "Activation Failed!");
+        dlog.info("doIT", "Say: Activation Failed! - DONE");
         return;
     }
 
+    dlog.info("doIT", "Say: Success!");
+    sam.Say(&out, "Success!");
+    dlog.info("doIT", "Say: Success! - DONE");
     successColor();
 }
 
@@ -217,12 +232,10 @@ void ICACHE_RAM_ATTR debounceArmDisarm(int state)
         if (state == 0)
         {
             armed = true;
-            armedColor();
         }
         else
         {
             armed = false;
-            readyColor();
         }
     }
 }
@@ -256,13 +269,11 @@ void ICACHE_RAM_ATTR trigger()
 void initWifi()
 {
     WiFiManager wm;
-    wm.setDebugOutput(false);
-
+    wm.setDebugOutput(true);
     WiFiManagerParameter url("URL", "URL", config.getURL(), 1024);
     wm.addParameter(&url);
     WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
     wm.addParameter(&ntp);
-
     WiFiManagerParameter otaurl("OTAURL", "OTA URL", "", 1024);
     wm.addParameter(&otaurl);
 
@@ -356,29 +367,27 @@ void setup()
     pinMode(PIN_ARM,      INPUT_PULLUP);
 
     startupColor();
-
     config.begin();
-
     force_config = false;
 
     if (digitalRead(PIN_TRGR) == 0)
     {
         force_config = true;
     }
-
     if (!config.load())
     {
         force_config = true;
     }
-
+//    WiFi.mode(WIFI_STA);
+//    WiFi.begin();
     initWifi();
     startupColor();
 
     setClock();
-
     dlog.info("setup", "url:         '%s'", config.getURL());
 
     armed     = false;
+    was_armed = false;
     triggered = false;
 
     int numCerts = certStore.initCertStore(&certs_idx, &certs_ar);
@@ -395,6 +404,26 @@ void setup()
 
 void loop()
 {
+    if (was_armed != armed)
+    {
+        was_armed = armed;
+
+        if (armed)
+        {
+            armedColor();
+            dlog.info("loop", "Say: armed!");
+            sam.Say(&out, "System is now armed!");
+            dlog.info("loop", "Say: armed! - DONE");
+        }
+        else
+        {
+            readyColor();
+            dlog.info("loop", "Say: disarmed!");
+            sam.Say(&out, "System disarmed.");
+            dlog.info("loop", "Say: disarmed! - DONE");
+        }
+    }
+
     if (triggered)
     {
         dlog.info("loop", "TRIGGERED: millis: %lu", millis());
