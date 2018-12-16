@@ -8,7 +8,7 @@
 #include <time.h>
 
 
-AudioOutputI2SNoDAC out;
+AudioOutput* out;
 ESP8266SAM sam;
 
 BearSSL::CertStore certStore;
@@ -59,6 +59,13 @@ class SPIFFSCertStoreFile : public BearSSL::CertStoreFile {
 
 SPIFFSCertStoreFile certs_idx("/certs.idx");
 SPIFFSCertStoreFile certs_ar("/certs.ar");
+
+void say(const char* verbage)
+{
+    dlog.info("say", "verbage: '%s'", verbage);
+    sam.Say(out, verbage);
+    dlog.info("say", "done");
+}
 
 // Set time via NTP, as required for x.509 validation
 void setClock()
@@ -173,9 +180,7 @@ bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
 
 void doIT()
 {
-    dlog.info("doIT", "Say: Activating!");
-    sam.Say(&out, "Activating!");
-    dlog.info("doIT", "Say: Activating! - DONE");
+    say("Activating");
 
     const char* url = config.getURL();
 
@@ -209,15 +214,11 @@ void doIT()
     if (code != 200)
     {
         failureColor();
-        dlog.info("doIT", "Say: Activation Failed!");
-        sam.Say(&out, "Activation Failed!");
-        dlog.info("doIT", "Say: Activation Failed! - DONE");
+        say("Activation Failed!");
         return;
     }
 
-    dlog.info("doIT", "Say: Success!");
-    sam.Say(&out, "Success!");
-    dlog.info("doIT", "Say: Success! - DONE");
+    say("Success!");
     successColor();
 }
 
@@ -363,6 +364,10 @@ void setup()
     dlog.info("setup", "Startup!");
     dlog.info("setup", "Version: %s", ESP_BUTTON_VERSION);
 
+    out = new AudioOutputI2SNoDAC();
+    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ET);
+    dlog.info("setup", "i2s initialized");
+
     pinMode(PIN_TRGR,     INPUT_PULLUP);
     pinMode(PIN_ARM,      INPUT_PULLUP);
 
@@ -378,8 +383,7 @@ void setup()
     {
         force_config = true;
     }
-//    WiFi.mode(WIFI_STA);
-//    WiFi.begin();
+
     initWifi();
     startupColor();
 
@@ -411,16 +415,12 @@ void loop()
         if (armed)
         {
             armedColor();
-            dlog.info("loop", "Say: armed!");
-            sam.Say(&out, "System is now armed!");
-            dlog.info("loop", "Say: armed! - DONE");
+            say("arm");
         }
         else
         {
             readyColor();
-            dlog.info("loop", "Say: disarmed!");
-            sam.Say(&out, "System disarmed.");
-            dlog.info("loop", "Say: disarmed! - DONE");
+            say("disarm");
         }
     }
 
