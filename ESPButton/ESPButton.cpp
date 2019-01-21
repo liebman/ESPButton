@@ -24,6 +24,7 @@ volatile bool armed;
 bool was_armed;
 Ticker debounce;
 volatile bool triggered;
+WiFiClient *client;
 
 bool force_config;
 
@@ -184,18 +185,6 @@ void doIT()
 
     const char* url = config.getURL();
 
-    WiFiClient *client = nullptr;
-    if (startsWith("https:", url))
-    {
-        BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
-        // Integrate the cert store with this connection
-        bear->setCertStore(&certStore);
-        client = bear;
-    }
-    else
-    {
-        client = new WiFiClient;
-    }
     HTTPClient *http = new HTTPClient;
     http->setUserAgent("ESPButton/1.1");
     http->setFollowRedirects(true);
@@ -209,7 +198,6 @@ void doIT()
     http->end();
 
     delete http;
-    delete client;
 
     if (code != 200)
     {
@@ -263,6 +251,7 @@ void ICACHE_RAM_ATTR trigger()
     {
         triggered = true;
         armed = false;
+        was_armed = false;
         triggeredColor();
     }
 }
@@ -363,16 +352,20 @@ void setup()
     //dlog.setLevel(DLOG_LEVEL_DEBUG);
     dlog.info("setup", "Startup!");
     dlog.info("setup", "Version: %s", ESP_BUTTON_VERSION);
+    dlog.info("setup", "max memory chunk: %d", ESP.getMaxFreeBlockSize());
+
 
     out = new AudioOutputI2SNoDAC();
     sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ET);
     dlog.info("setup", "i2s initialized");
+    dlog.info("setup", "max memory chunk: %d", ESP.getMaxFreeBlockSize());
 
     pinMode(PIN_TRGR,     INPUT_PULLUP);
     pinMode(PIN_ARM,      INPUT_PULLUP);
 
     startupColor();
     config.begin();
+    dlog.info("setup", "after config.begin() max memory chunk: %d", ESP.getMaxFreeBlockSize());
     force_config = false;
 
     if (digitalRead(PIN_TRGR) == 0)
@@ -385,7 +378,21 @@ void setup()
     }
 
     initWifi();
+    dlog.info("setup", "after initWifi() max memory chunk: %d", ESP.getMaxFreeBlockSize());
     startupColor();
+
+    if (startsWith("https:", config.getURL()))
+    {
+        BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
+        // Integrate the cert store with this connection
+        bear->setCertStore(&certStore);
+        client = bear;
+    }
+    else
+    {
+        client = new WiFiClient;
+    }
+    dlog.info("setup", "after wifi client max memory chunk: %d", ESP.getMaxFreeBlockSize());
 
     setClock();
     dlog.info("setup", "url:         '%s'", config.getURL());
