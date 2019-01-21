@@ -21,3 +21,6 @@
 [submodule "libraries/ESP8266_Spiram"]
 	path = libraries/ESP8266_Spiram
 	url = https://github.com/Gianbacchio/ESP8266_Spiram.git
+[submodule "hardware/espressif/esp32"]
+	path = hardware/espressif/esp32
+	url = https://github.com/espressif/arduino-esp32.git
