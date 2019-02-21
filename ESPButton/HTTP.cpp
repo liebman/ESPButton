@@ -45,7 +45,7 @@ bool HTTP::GET(WiFiClient& client, const char* url)
     DBG("making HTTPClient\n");
     HTTPClient http;
     http.setUserAgent("HTTPClientTest/1.1");
-    //http.setFollowRedirects(true);
+    http.setFollowRedirects(true);
     http.setTimeout(10000);
     http.begin(client, url);
 
