@@ -1,71 +1,165 @@
-#include "ESPButton.h"
-#include "Logger.h"
-#include "DLogPrintWriter.h"
+#include "Arduino.h"
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <FS.h>
+#include <time.h>
+#include <exception>
+#include <WiFiManager.h>
+#include "Config.h"
+#include "HTTP.h"
+#include "RGBLED.h"
+#include "RGBSeq.h"
+#include "PolledButton.h"
 #include "AudioOutputI2SNoDAC.h"
 #include <ESP8266SAM.h>
 
-#include <FS.h>
-#include <time.h>
+#define USE_WIFI 1
 
 
-AudioOutput* out;
-ESP8266SAM sam;
+#ifndef DBG_MAIN
+#define DBG_MAIN 1
+#endif
+#ifdef DBG_MAIN
+#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#else
+#define DBG(...)
+#endif
 
-BearSSL::CertStore certStore;
+#define PIN_RED      12
+#define PIN_GREEN    13
+#define PIN_BLUE     16
+#define PIN_ARM      0
+#define PIN_TRIGGER  14
+#define COLOR_BLACK  {0,   0,   0}
+#define COLOR_RED    {255, 0,   0}
+#define COLOR_GREEN  {0,   255, 0}
+#define COLOR_BLUE   {0,   0,   255}
+#define COLOR_YELLOW {255, 255, 0}
+#define COLOR_ORANGE {255, 127, 0}
 
-DLog& dlog = DLog::getLog();
+static const char     DEFAULT_URL[]        = "https://jigsaw.w3.org/HTTP/connection.html"; // "https://jigsaw.w3.org/HTTP/300/301.html";
+static const char     DEFAULT_NTP_SERVER[] = "0.zoddotcom.pool.ntp.org";
 
-Ticker timer;
-RGBLED led(PIN_RED, PIN_GREEN, PIN_BLUE);
-Config config;
-
-volatile ColorBlink color_blink;
-volatile bool armed;
-bool was_armed;
-Ticker debounce;
-volatile bool triggered;
-WiFiClient *client;
-
-bool force_config;
-
-class SPIFFSCertStoreFile : public BearSSL::CertStoreFile {
-  public:
-    SPIFFSCertStoreFile(const char *name) {
-      _name = name;
-    };
-    virtual ~SPIFFSCertStoreFile() override {};
-
-    // The main API
-    virtual bool open(bool write = false) override {
-      _file = SPIFFS.open(_name, write ? "w" : "r");
-      return _file;
-    }
-    virtual bool seek(size_t absolute_pos) override {
-      return _file.seek(absolute_pos, SeekSet);
-    }
-    virtual ssize_t read(void *dest, size_t bytes) override {
-      return _file.readBytes((char*)dest, bytes);
-    }
-    virtual ssize_t write(void *dest, size_t bytes) override {
-      return _file.write((uint8_t*)dest, bytes);
-    }
-    virtual void close() override {
-      _file.close();
-    }
-
-  private:
-    File _file;
-    const char *_name;
+enum class State
+{
+    BOOT,
+    CONFIG,
+    IDLE,
+    ARMED,
+    ACTIVE,
+    SUCCESS,
+    FAIL
 };
 
-SPIFFSCertStoreFile certs_idx("/certs.idx");
-SPIFFSCertStoreFile certs_ar("/certs.ar");
+Config               config;
+PolledButton         arm(PIN_ARM);
+PolledButton         trigger(PIN_TRIGGER);
+RGBLED               rgb(PIN_RED, PIN_GREEN, PIN_BLUE);
+RGBSeq               seq(rgb, 4);
+State                state = State::BOOT;
+AudioOutputI2SNoDAC* out;
+ESP8266SAM           sam;
 
-void say(const char* verbage)
+#if 0
+#define say(v)      sam.Say_P(out, (PGM_P)PSTR(v))
+#else
+#define say(v)      sam.Say(out, (v))
+#endif
+
+
+void printMemInfo(const char* prefix = "")
 {
-    dlog.info("say", "verbage: '%s'", verbage);
-    sam.Say(out, verbage);
-    dlog.info("say", "done");
+    DBG("%smemory free: %u maxchunk:%u\n", prefix, ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
+}
+
+void setStateColor()
+{
+    switch(state)
+    {
+        case State::BOOT:
+            seq.stop();
+            rgb.set(COLOR_BLUE);
+            break;
+
+        case State::CONFIG:
+            seq.run({
+                RGBSeqItem(COLOR_RED,   0.125f),
+                RGBSeqItem(COLOR_GREEN, 0.125f)
+            });
+            break;
+
+        case State::IDLE:
+            seq.run({
+                RGBSeqItem(COLOR_BLUE,  0.1f),
+                RGBSeqItem(COLOR_BLACK, 300.0f)
+            });
+            break;
+
+        case State::ARMED:
+            seq.run({
+                RGBSeqItem(COLOR_YELLOW, 0.25f),
+                RGBSeqItem(COLOR_BLACK,  0.25f)
+            });
+            break;
+
+        case State::ACTIVE:
+            seq.run({
+                RGBSeqItem(COLOR_GREEN, 0.125f),
+                RGBSeqItem(COLOR_BLACK, 0.125f)
+            });
+            break;
+
+        case State::SUCCESS:
+            seq.stop();
+            rgb.set(COLOR_GREEN);
+            break;
+
+        case State::FAIL:
+            seq.stop();
+            rgb.set(COLOR_RED);
+            break;
+    }
+
+}
+
+void setState(State new_state)
+{
+    if (state == new_state)
+    {
+        return;
+    }
+
+    const char* name = "UNKNOWN";
+    switch(new_state)
+    {
+        case State::BOOT:
+            name = "BOOT";
+            break;
+        case State::CONFIG:
+            name = "CONFIG";
+            break;
+        case State::IDLE:
+            name = "IDLE";
+            break;
+        case State::ARMED:
+            name = "ARMED";
+            break;
+        case State::ACTIVE:
+            name = "ACTIVE";
+            break;
+        case State::SUCCESS:
+            name = "SUCCESS";
+            break;
+        case State::FAIL:
+            name = "FAIL";
+            break;
+
+    }
+
+    state = new_state;
+    setStateColor();
+    DBG("setState(%s)\n", name);
+    printMemInfo();
 }
 
 // Set time via NTP, as required for x.509 validation
@@ -75,367 +169,156 @@ void setClock()
     IPAddress address;
     while(!WiFi.hostByName(ntp_server, address))
     {
-        dlog.error("setClock", "FAILED to lookup address for: '%s', retrying...", ntp_server);
+        DBG("FAILED to lookup address for: '%s', retrying...\n", ntp_server);
         delay(1000);
     }
 
-    dlog.info("setClock", "DNS lookup gives: %d.%d.%d.%d", address[0], address[1], address[2], address[3]);
+    DBG("DNS lookup gives: %d.%d.%d.%d\n", address[0], address[1], address[2], address[3]);
 
-    dlog.info("setClock", "setting NTP server to '%s'", ntp_server);
+    DBG("setting NTP server to '%s'\n", ntp_server);
     configTime(0, 0, ntp_server, nullptr, nullptr);
 
-    dlog.info("setCock", "Waiting for NTP time sync...");
+    DBG("Waiting for NTP time sync...\n");
     time_t now = time(nullptr);
     while (now < 8 * 3600 * 2)
     {
-        dlog.trace("setClock", "now: %ul", now);
         delay(500);
         now = time(nullptr);
     }
     struct tm timeinfo;
     gmtime_r(&now, &timeinfo);
-    dlog.info("setCock", "Current UTC time: %s", asctime(&timeinfo));
+    DBG("Current UTC time: %s", asctime(&timeinfo));
 }
 
-void ICACHE_RAM_ATTR setColor(const RGBColor *c)
-{
-    led.set(c);
-}
-
-void ICACHE_RAM_ATTR blinkHandler()
-{
-    if (color_blink.state)
-    {
-        setColor(color_blink.on_color);
-        timer.once(color_blink.on_time, &blinkHandler);
-    }
-    else
-    {
-        setColor(color_blink.off_color);
-        timer.once(color_blink.off_time, &blinkHandler);
-    }
-    color_blink.state = !color_blink.state;
-}
-
-void ICACHE_RAM_ATTR alternateColors(const RGBColor *on_color, float on_time,
-        const RGBColor *off_color, float off_time)
-{
-    timer.detach();
-    color_blink.on_color = on_color;
-    color_blink.on_time = on_time;
-    color_blink.off_color = off_color;
-    color_blink.off_time = off_time;
-    color_blink.state = false;
-    blinkHandler();
-}
-
-void startupColor()
-{
-    timer.detach();
-    setColor(&blue);
-}
-
-void configColor()
-{
-    alternateColors(&red, 0.125, &green, 0.125);
-}
-
-void readyColor()
-{
-    alternateColors(&blue, 0.1, &black, 300.0);
-}
-
-void updateColor()
-{
-    alternateColors(&blue, 0.5, &black, 0.5);
-}
-
-void ICACHE_RAM_ATTR armedColor()
-{
-    alternateColors(&yellow, 0.25, &black, 0.25);
-}
-
-void ICACHE_RAM_ATTR triggeredColor()
-{
-    alternateColors(&green, 0.125, &black, 0.125);
-}
-
-void ICACHE_RAM_ATTR failureColor()
-{
-    timer.detach();
-    setColor(&red);
-}
-
-void ICACHE_RAM_ATTR successColor()
-{
-    timer.detach();
-    setColor(&green);
-}
-
-bool ICACHE_RAM_ATTR startsWith(const char *pre, const char *str)
+bool startsWith(const char *pre, const char *str)
 {
     size_t lenpre = strlen(pre),
            lenstr = strlen(str);
     return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
 }
 
-void doIT()
+void initWiFi(bool force)
 {
-    say("Activating");
-
-    const char* url = config.getURL();
-
-    HTTPClient *http = new HTTPClient;
-    http->setUserAgent("ESPButton/1.1");
-    http->setFollowRedirects(true);
-    http->begin(*client, url);
-
-    dlog.info("doIt", "Starting Request: '%s'", config.getURL());
-    int code = http->GET();
-    dlog.info("doIt", "http code: %d", code);
-    dlog.info("doIt", "size: %d", http->getSize());
-
-    http->end();
-
-    delete http;
-
-    if (code != 200)
+    if (!force)
     {
-        failureColor();
-        say("Activation Failed!");
-        return;
-    }
-
-    say("Success!");
-    successColor();
-}
-
-//
-// If after the debounce timer expires the state is still the same then
-// we can arm or disarm
-//
-void ICACHE_RAM_ATTR debounceArmDisarm(int state)
-{
-    if (digitalRead(PIN_ARM) == state)
-    {
-        if (state == 0)
-        {
-            armed = true;
-        }
-        else
-        {
-            armed = false;
+        WiFi.begin(/*SSID_NAME, SSID_PASS*/);
+        // wait 30 up to seconds for connect
+        uint32_t end = millis()+30000;
+        DBG("wait for connect.\n");
+        while ((WiFi.status() != WL_CONNECTED) && (millis() < end)) {
+          delay(1000);
         }
     }
-}
 
-//
-// Called on change of ARM pin, use debounce timer to debounce state change.
-//
-void ICACHE_RAM_ATTR arm()
-{
-    //
-    // Use a timer to debounce, could be arm or disarm
-    //
-    int state = digitalRead(PIN_ARM);
-    debounce.once_ms(DEBOUNCE_DELAY, debounceArmDisarm, state);
-}
+    printMemInfo();
 
-//
-// Called on falling edge of trigger pin, no debounce here as we mark as disarmed here
-// and  the action (web request) will take longer than the bouncing.
-//
-void ICACHE_RAM_ATTR trigger()
-{
-    if (armed)
+    // if we are still not connected then start WiFiManager
+    if (force || (WiFi.status() != WL_CONNECTED))
     {
-        triggered = true;
-        armed = false;
-        was_armed = false;
-        triggeredColor();
-    }
-}
-
-void initWifi()
-{
-    WiFiManager wm;
-    wm.setDebugOutput(true);
-    WiFiManagerParameter url("URL", "URL", config.getURL(), 1024);
-    wm.addParameter(&url);
-    WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
-    wm.addParameter(&ntp);
-    WiFiManagerParameter otaurl("OTAURL", "OTA URL", "", 1024);
-    wm.addParameter(&otaurl);
-
-    wm.setAPCallback([](WiFiManager *)
-    {
-        configColor();
-    });
-
-    static bool save_config  = false;
-    wm.setSaveConfigCallback([]()
-    {
-        save_config = true;
-    });
-
-    String ssid = "ESPButton" + String(ESP.getChipId());
-
-    if (force_config)
-    {
-        wm.startConfigPortal(ssid.c_str(), NULL);
-    }
-    else
-    {
-        wm.autoConnect(ssid.c_str(), NULL);
-    }
-    dlog.info("initWifi", "save_config = %d", save_config);
-    WiFi.mode(WIFI_STA);
-
-    while (WiFi.status() != WL_CONNECTED) {
-        dlog.warning("initWifi", "still not connected, waiting...");
-        delay(1000);
-    }
-
-    if (save_config)
-    {
-        config.setURL(url.getValue());
-        config.setNTPServer(ntp.getValue());
-        config.save();
-
-        const char* ota_url = otaurl.getValue();
-        dlog.info("initWifi", "OTA settings:  url: '%s'", ota_url);
-
-        if (ota_url != NULL && *ota_url != '\0')
-        {
-            dlog.info("initWifi", "OTA Update: from %s", ota_url);
-            updateColor();
-            ESPhttpUpdate.followRedirects(true);
-            t_httpUpdate_return ret = HTTP_UPDATE_FAILED;
-            WiFiClient *client = nullptr;
-            if (strncmp(ota_url, "https:", 6) == 0)
-            {
-                BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
-                // Integrate the cert store with this connection
-                bear->setCertStore(&certStore);
-                client = bear;
-            }
-            else
-            {
-                client = new WiFiClient;
-            }
-
-            ret = ESPhttpUpdate.update(*client, ota_url, ESP_BUTTON_VERSION);
-            switch(ret)
-            {
-                case HTTP_UPDATE_FAILED:
-                    dlog.info("initWifi", "OTA update failed!");
-                    break;
-                case HTTP_UPDATE_NO_UPDATES:
-                    dlog.info("initWifi", "OTA no updates!");
-                    break;
-                case HTTP_UPDATE_OK:
-                    dlog.info("initWifi", "OTA update OK!"); // may not be reached as ESP is restarted!
-                    break;
-                default:
-                    dlog.info("initWifi", "OTA update WTF? unexpected return code: %d", ret);
-                    break;
-            }
-            delete client;
-        }
+        DBG("create WiFiManager\n");
+        WiFiManager wm;
+        printMemInfo();
+        DBG("starting config portal\n");
+        setState(State::CONFIG);
+        wm.startConfigPortal("ESP_BUTTON", nullptr);
+        printMemInfo();
+        DBG("\n\n************************** RESETTING!!!!!!\n\n");
+        ESP.restart();
     }
 }
 
 void setup()
 {
+    setStateColor();
     Serial.begin(76800);
-    dlog.begin(new DLogPrintWriter(Serial));
-    //dlog.setLevel(DLOG_LEVEL_DEBUG);
-    dlog.info("setup", "Startup!");
-    dlog.info("setup", "Version: %s", ESP_BUTTON_VERSION);
-    dlog.info("setup", "max memory chunk: %d", ESP.getMaxFreeBlockSize());
+    for(int i = 0; i < 5;++i) {Serial.println(i); delay(1000);}
+    printMemInfo();
 
-
+    DBG("Starting SAM\n");
     out = new AudioOutputI2SNoDAC();
-    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ET);
-    dlog.info("setup", "i2s initialized");
-    dlog.info("setup", "max memory chunk: %d", ESP.getMaxFreeBlockSize());
+    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
+    printMemInfo();
 
-    pinMode(PIN_TRGR,     INPUT_PULLUP);
-    pinMode(PIN_ARM,      INPUT_PULLUP);
+    DBG("Starting SPIFFS\n");
+    SPIFFS.begin();
+    printMemInfo();
 
-    startupColor();
+    DBG("Starting Config\n");
     config.begin();
-    dlog.info("setup", "after config.begin() max memory chunk: %d", ESP.getMaxFreeBlockSize());
-    force_config = false;
+    printMemInfo();
 
-    if (digitalRead(PIN_TRGR) == 0)
-    {
-        force_config = true;
-    }
+    DBG("loading config\n");
     if (!config.load())
     {
-        force_config = true;
+      DBG("failed to load config, setting defaults!\n");
+      config.setURL(DEFAULT_URL);
+      config.setNTPServer(DEFAULT_NTP_SERVER);
+      if (!config.save())
+      {
+          DBG("Failed to save config!!!\n");
+      }
     }
+    printMemInfo();
 
-    initWifi();
-    dlog.info("setup", "after initWifi() max memory chunk: %d", ESP.getMaxFreeBlockSize());
-    startupColor();
-
-    if (startsWith("https:", config.getURL()))
-    {
-        BearSSL::WiFiClientSecure *bear  = new BearSSL::WiFiClientSecure();
-        // Integrate the cert store with this connection
-        bear->setCertStore(&certStore);
-        client = bear;
-    }
-    else
-    {
-        client = new WiFiClient;
-    }
-    dlog.info("setup", "after wifi client max memory chunk: %d", ESP.getMaxFreeBlockSize());
-
-    setClock();
-    dlog.info("setup", "url:         '%s'", config.getURL());
-
-    armed     = false;
-    was_armed = false;
-    triggered = false;
-
-    int numCerts = certStore.initCertStore(&certs_idx, &certs_ar);
-    dlog.info("setup", "Number of CA certs read: %d", numCerts);
-    if (numCerts == 0)
-    {
-      dlog.error("setup", "No certs found. Did you run certs-from-mozill.py and upload the SPIFFS directory before running?");
-    }
-
-    readyColor();
-    attachInterrupt(digitalPinToInterrupt(PIN_TRGR), &trigger, FALLING);
-    attachInterrupt(digitalPinToInterrupt(PIN_ARM), &arm, CHANGE);
+#if USE_WIFI
+    initWiFi(false);
+    printMemInfo();
+#endif
+    setState(State::IDLE);
+    say("system ready");
 }
+
 
 void loop()
 {
-    if (was_armed != armed)
+    switch (state)
     {
-        was_armed = armed;
+        case State::BOOT:
+        case State::CONFIG:
+        case State::IDLE:
+            if (arm.isPressed())
+            {
+                setState(State::ARMED);
+                say("armed");
+            }
+            break;
 
-        if (armed)
-        {
-            armedColor();
-            say("arm");
-        }
-        else
-        {
-            readyColor();
-            say("disarm");
-        }
-    }
+        case State::ARMED:
+            if (arm.isPressed() == 0)
+            {
+                setState(State::IDLE);
+                say("dis-armed");
+            }
+            else if (arm.isPressed() < trigger.isPressed())
+            {
+                // if the trigger time is after the arm time then trigger!
+                setState(State::ACTIVE);
+                say("activated");
+                // triggered!
+        #if USE_WIFI
+                HTTP http;
+                if (http.GET(config.getURL()))
+                {
+                    say("success");
+                    setState(State::SUCCESS);
+                }
+                else
+                {
+                    say("request failed");
+                    setState(State::FAIL);
+                }
+        #endif
+            }
+            break;
 
-    if (triggered)
-    {
-        dlog.info("loop", "TRIGGERED: millis: %lu", millis());
-        doIT();
-        triggered = false;
+        case State::ACTIVE:
+        case State::SUCCESS:
+        case State::FAIL:
+            if (arm.isPressed() == 0)
+            {
+                setState(State::IDLE);
+                say("dis-armed");
+            }
+            break;
     }
-    delay(10);
 }

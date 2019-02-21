@@ -1,141 +1,190 @@
 /*
  * Config.cpp
  *
- *  Created on: Dec 3, 2017
+ *  Created on: Feb 9, 2019
  *      Author: chris.l
  */
 
 #include "Config.h"
-#include "Arduino.h"
-#include "FS.h"
-#include "ArduinoJson.h"
-//#define DEBUG
-#include "Logger.h"
 
-static const int   JSON_BUFFER_SIZE = 2048;
-static const char* CONFIG_FILENAME  = "/ESPButton.json";
-static const char* KEY_URL          = "url";
-static const char* KEY_NTP_SERVER   = "ntp_server";
-static const char *DEFAULT_NTP_SERVER = "0.zoddotcom.pool.ntp.org";
+static const char*    CONFIG_FILENAME    = "/ESPButton.dat";
+static const uint32_t CONFIG_MAGIC       = 0xc0c0fefe;
 
-Config::Config() : _url(nullptr), _ntp_server(nullptr)
+typedef enum value_type : uint8_t
+{
+    UINT32 = 0,
+    STRING = 1
+} ValueType;
+
+Config::Config() : _url(), _ntp_server()
 {
 }
 
 Config::~Config()
 {
-    if (_url)
-    {
-        free(_url);
-    }
 }
 
 void Config::begin()
 {
+#if 0
     if (!SPIFFS.begin())
     {
-        dlog.info("Config", "SPIFFS.begin() failed! (ignoring!)");
+        Serial.printf_P(PSTR("Config: SPIFFS.begin() failed! (ignoring!)\n"));
     }
+#endif
 }
 
 const char* Config::getURL()
 {
-    return _url != NULL ? _url : "";
+    return _url.c_str();
 }
-
 void Config::setURL(const char* url)
 {
-    dlog.info("Config", "::setURL: %s", url);
-    char* old_url = _url;
-    _url = strdup(url);
-    if (old_url)
-    {
-        dlog.info("Config", "::setURL: freeing old url: '%s'", old_url);
-        free(old_url);
-    }
+    _url = url;
 }
-
 const char* Config::getNTPServer()
 {
-    return _ntp_server != NULL ? _ntp_server : DEFAULT_NTP_SERVER;
+    return _ntp_server.c_str();
 }
 
 void Config::setNTPServer(const char* ntp)
 {
-    dlog.info("Config", "::setNtpServer: %s", ntp);
-    char* old = _ntp_server;
-    _ntp_server = strdup(ntp);
-    if (old)
-    {
-        dlog.info("Config", "::setNTPServer: freeing old ntp_server: '%s'", old);
-        free(old);
-    }
+    _ntp_server = ntp;
 }
 
-bool Config::save()
+bool Config::read(File& file, uint32_t& val)
 {
-
-    dlog.info("Config", "::save starting!");
-    if (!_url)
+    ValueType type;
+    if (file.read((uint8_t *)&type, sizeof(type)) != sizeof(type))
     {
-        dlog.info("Config", "::save: fail: url not set!");
         return false;
     }
-
-    File file = SPIFFS.open(CONFIG_FILENAME, "w");
-    if (!file)
+    if (type != ValueType::UINT32)
     {
-        dlog.info("Config", "::save: failed to open '%s' for writing!", CONFIG_FILENAME);
         return false;
     }
+    if (file.read((uint8_t *)&val, sizeof(val)) != sizeof(val))
+    {
+        return false;
+    }
+    return true;
+}
 
-    DynamicJsonBuffer buffer(JSON_BUFFER_SIZE);
-    JsonObject& root = buffer.createObject();
+bool Config::read(File& file, String& str)
+{
+    ValueType type;
+    if (file.read((uint8_t *)&type, sizeof(type)) != sizeof(type))
+    {
+        return false;
+    }
+    if (type != ValueType::STRING)
+    {
+        return false;
+    }
+    size_t len;
+    if (file.read((uint8_t *)&len, sizeof(len)) != sizeof(len))
+    {
+        return false;
+    }
+    uint8_t buf[len+1];
+    if (file.read(buf, len) != len)
+    {
+        return false;
+    }
+    buf[len] = 0;
+    str = (char*)buf;
+    return true;
+}
 
-    root[KEY_URL]        = _url;
-    root[KEY_NTP_SERVER] = _ntp_server;
-    root.printTo(file);
+bool Config::write(File& file, uint32_t val)
+{
+    file.write(ValueType::UINT32);
+    if (file.write((uint8_t *)&val, sizeof(val)) != sizeof(val))
+    {
+        return false;
+    }
+    return true;
+}
 
-    file.close();
-
-    dlog.info("Config", "::save success!");
+bool Config::write(File& file, String& str)
+{
+    size_t len;
+    file.write(ValueType::STRING);
+    len = str.length();
+    if (file.write((uint8_t *)&len, sizeof(len)) != sizeof(len))
+    {
+        return false;
+    }
+    if (len > 0 && file.write((uint8_t *)str.c_str(), len) != len)
+    {
+        return false;
+    }
     return true;
 }
 
 bool Config::load()
 {
-    dlog.info("Config", "::load starting!");
-
     File file = SPIFFS.open(CONFIG_FILENAME, "r");
     if (!file)
     {
-        dlog.info("Config", "::load: failed to open '%s' for reading!", CONFIG_FILENAME);
+        Serial.printf_P(PSTR("Config::load: failed to open '%s' for reading!\n"), CONFIG_FILENAME);
         return false;
     }
 
-    DynamicJsonBuffer buffer(JSON_BUFFER_SIZE);
-    dlog.debug("Config", "load: parsing file contents");
-    JsonObject& root = buffer.parseObject(file);
+    uint32_t magic;
+    if (!read(file, magic) || magic != CONFIG_MAGIC)
+    {
+        Serial.printf_P(PSTR("Config::load: failed to read magic!\n"));
+        return false;
+    }
+
+    if (!read(file, _url))
+    {
+        Serial.printf_P(PSTR("Config::load: failed to read url!\n"));
+        return false;
+    }
+
+    if (!read(file, _ntp_server))
+    {
+        Serial.printf_P(PSTR("Config::load: failed to read ntp_server!\n"));
+        return false;
+    }
+
     file.close();
 
-    if (!root.success())
+    Serial.printf_P(PSTR("Config::load success!\n"));
+    return true;
+}
+
+bool Config::save()
+{
+    File file = SPIFFS.open(CONFIG_FILENAME, "w");
+    if (!file)
     {
-        dlog.error("Config", "load: fails to parse file!");
+        Serial.printf_P(PSTR("Config::save: failed to open '%s' for writing!\n"), CONFIG_FILENAME);
         return false;
     }
 
-    if (root.containsKey(KEY_URL))
+    if (!write(file, CONFIG_MAGIC))
     {
-        //dlog.debug("Config", "load: key: '%s', value: '%s'", KEY_URL, root[KEY_URL]);
-        setURL(root[KEY_URL]);
+        Serial.printf_P(PSTR("Config::save: failed to write magic!\n"));
+        return false;
     }
 
-    if (root.containsKey(KEY_NTP_SERVER))
+    if (!write(file, _url))
     {
-        //dlog.debug("Config", "load: key: '%s', value: '%s'", KEY_NTP_SERVER, root[KEY_NTP_SERVER]);
-        setNTPServer(root[KEY_NTP_SERVER]);
+        Serial.printf_P(PSTR("Config::save: failed to write url!\n"));
+        return false;
     }
 
-    dlog.info("Config", "::load success!");
+    if (!write(file, _ntp_server))
+    {
+        Serial.printf_P(PSTR("Config::save: failed to write ntp_server!\n"));
+        return false;
+    }
+
+    file.close();
+
+    Serial.printf_P(PSTR("Config::save success!\n"));
     return true;
 }

@@ -1,33 +1,22 @@
+// Only modify this file to include
+// - function definitions (prototypes)
+// - include files
+// - extern variable definitions
+// In the appropriate section
 
 #ifndef _ESPButton_H_
 #define _ESPButton_H_
-
 #include "Arduino.h"
-#include "ESP8266httpUpdate.h"
-#include "WiFiManager.h"
-#include "ESP8266HTTPClient.h"
-#include "RGBLED.h"
-#include "Ticker.h"
-#include "Config.h"
+//add your includes for the project ESPButton here
 
-#define DEFAULT_NTP_SERVER     "0.zoddotcom.pool.ntp.org"
-#define ESP_BUTTON_VERSION "0.3.2"
 
-#define DEBOUNCE_DELAY 20
+//end of add your includes here
 
-#define PIN_RED   12
-#define PIN_GREEN 13
-#define PIN_BLUE  16
-#define PIN_ARM   0
-#define PIN_TRGR  14
 
-typedef struct color_blink
-{
-    const RGBColor *on_color;
-    float           on_time;
-    const RGBColor *off_color;
-    float           off_time;
-    bool            state;
-} ColorBlink;
+//add your function definitions for the project ESPButton here
 
+
+
+
+//Do not add code below this line
 #endif /* _ESPButton_H_ */
