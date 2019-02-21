@@ -9,7 +9,6 @@
 #define POLLEDBUTTON_H_
 #include "Arduino.h"
 
-
 #define PB_DEFAULT_DEBOUNCE_MS 20 // 20ms by default
 
 class PolledButton

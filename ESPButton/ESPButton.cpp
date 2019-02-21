@@ -19,7 +19,7 @@
 #ifndef DBG_MAIN
 #define DBG_MAIN 1
 #endif
-#ifdef DBG_MAIN
+#if DBG_MAIN
 #define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
 #else
 #define DBG(...)
@@ -265,46 +265,49 @@ void setup()
     printMemInfo();
 #endif
     setState(State::IDLE);
-    say("system ready");
+    say(" the system ready");
 }
 
 
 void loop()
 {
+    uint32 armed     = arm.isPressed();
+    uint32 triggered = trigger.isPressed();
+
     switch (state)
     {
         case State::BOOT:
         case State::CONFIG:
         case State::IDLE:
-            if (arm.isPressed())
+            if (armed && !triggered)
             {
                 setState(State::ARMED);
-                say("armed");
+                say(" armed");
             }
             break;
 
         case State::ARMED:
-            if (arm.isPressed() == 0)
+            if (armed == 0)
             {
                 setState(State::IDLE);
-                say("dis-armed");
+                say(" dis-armed");
             }
-            else if (arm.isPressed() < trigger.isPressed())
+            else if (armed < triggered)
             {
                 // if the trigger time is after the arm time then trigger!
                 setState(State::ACTIVE);
-                say("activated");
+                say(" activated");
                 // triggered!
         #if USE_WIFI
                 HTTP http;
                 if (http.GET(config.getURL()))
                 {
-                    say("success");
+                    say(" success");
                     setState(State::SUCCESS);
                 }
                 else
                 {
-                    say("request failed");
+                    say(" the request failed");
                     setState(State::FAIL);
                 }
         #endif
@@ -314,10 +317,10 @@ void loop()
         case State::ACTIVE:
         case State::SUCCESS:
         case State::FAIL:
-            if (arm.isPressed() == 0)
+            if (armed == 0 && triggered == 0)
             {
                 setState(State::IDLE);
-                say("dis-armed");
+                say(" dis-armed");
             }
             break;
     }

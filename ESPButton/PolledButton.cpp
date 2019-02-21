@@ -11,7 +11,7 @@
 #define DBG_POLLEDBUTTON 0
 #endif
 
-#ifdef DBG_POLLEDBUTTON
+#if DBG_POLLEDBUTTON
 #define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
 #else
 #define DBG(...)

@@ -8,6 +8,16 @@
 #include "HTTP.h"
 #include <WiFiClientSecure.h>
 
+#ifndef DBG_HTTP
+#define DBG_HTTP 1
+#endif
+
+#if DBG_HTTP
+#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#else
+#define DBG(...)
+#endif
+
 HTTP::HTTP()
 {
 }

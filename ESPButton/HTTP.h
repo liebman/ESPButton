@@ -9,16 +9,6 @@
 #define HTTP_H_
 #include <ESP8266HTTPClient.h>
 
-#ifndef DBG_HTTP
-#define DBG_HTTP 1
-#endif
-
-#ifdef DBG_HTTP
-#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
-#else
-#define DBG(...)
-#endif
-
 class HTTP: public HTTPClient
 {
 public:
