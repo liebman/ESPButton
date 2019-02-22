@@ -1,7 +1,7 @@
 [submodule "hardware/esp8266com/esp8266"]
 	path = hardware/esp8266com/esp8266
 	url = https://github.com/liebman/Arduino.git
-	branch = http_update_redirect_and_bear_ssl
+	branch = http_update_follow_redirects
 [submodule "libraries/DLog"]
 	path = libraries/DLog
 	url = https://github.com/liebman/DLog.git
