@@ -26,12 +26,6 @@ Config::~Config()
 
 void Config::begin()
 {
-#if 0
-    if (!SPIFFS.begin())
-    {
-        Serial.printf_P(PSTR("Config: SPIFFS.begin() failed! (ignoring!)\n"));
-    }
-#endif
 }
 
 const char* Config::getURL()

@@ -29,6 +29,11 @@ PolledButton::~PolledButton()
 {
 }
 
+bool PolledButton::isPressedNow()
+{
+    return !digitalRead(_pin);
+}
+
 uint32_t PolledButton::isPressed()
 {
     // if button not pressed, reset activation

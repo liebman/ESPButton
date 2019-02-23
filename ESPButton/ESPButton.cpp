@@ -21,8 +21,10 @@
 #endif
 #if DBG_MAIN
 #define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#define DBG_FLUSH()   Serial.flush()
 #else
 #define DBG(...)
+#define DBG_FLUSH()
 #endif
 
 #define PIN_RED      12
@@ -43,6 +45,7 @@ static const char     DEFAULT_NTP_SERVER[] = "0.zoddotcom.pool.ntp.org";
 enum class State
 {
     BOOT,
+    CONNECT,
     CONFIG,
     IDLE,
     ARMED,
@@ -79,6 +82,13 @@ void setStateColor()
         case State::BOOT:
             seq.stop();
             rgb.set(COLOR_BLUE);
+            break;
+
+        case State::CONNECT:
+            seq.run({
+                RGBSeqItem(COLOR_BLUE,  0.125f),
+                RGBSeqItem(COLOR_BLACK, 0.125f)
+            });
             break;
 
         case State::CONFIG:
@@ -134,6 +144,9 @@ void setState(State new_state)
     {
         case State::BOOT:
             name = "BOOT";
+            break;
+        case State::CONNECT:
+            name = "CONNECT";
             break;
         case State::CONFIG:
             name = "CONFIG";
@@ -199,6 +212,8 @@ bool startsWith(const char *pre, const char *str)
 
 void initWiFi(bool force)
 {
+    setState(State::CONNECT);
+
     if (!force)
     {
         WiFi.begin(/*SSID_NAME, SSID_PASS*/);
@@ -212,14 +227,36 @@ void initWiFi(bool force)
 
     printMemInfo();
 
-    // if we are still not connected then start WiFiManager
+    // if we are still not connected or force is true then start WiFiManager
     if (force || (WiFi.status() != WL_CONNECTED))
     {
         DBG("create WiFiManager\n");
         WiFiManager wm;
         printMemInfo();
+        DBG("adding parameters\n");
+        WiFiManagerParameter url("url", "URL", config.getURL(), 1024);
+        wm.addParameter(&url);
+        WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
+        wm.addParameter(&ntp);
+        printMemInfo();
+        DBG("setting config save callback\n");
+        wm.setAPCallback([](WiFiManager *)
+        {
+            DBG("config portal up!\n");
+            printMemInfo();
+            setState(State::CONFIG);
+        });
+        wm.setSaveConfigCallback([&]()
+        {
+            DBG("save config callback!");
+            printMemInfo();
+            DBG("saving config!");
+            config.setURL(url.getValue());
+            config.setNTPServer(ntp.getValue());
+            printMemInfo();
+        });
+        printMemInfo();
         DBG("starting config portal\n");
-        setState(State::CONFIG);
         wm.startConfigPortal("ESP_BUTTON", nullptr);
         printMemInfo();
         DBG("\n\n************************** RESETTING!!!!!!\n\n");
@@ -261,7 +298,7 @@ void setup()
     printMemInfo();
 
 #if USE_WIFI
-    initWiFi(false);
+    initWiFi(trigger.isPressedNow());
     printMemInfo();
 #endif
     setState(State::IDLE);
@@ -278,6 +315,7 @@ void loop()
     {
         case State::BOOT:
         case State::CONFIG:
+        case State::CONNECT:
         case State::IDLE:
             if (armed && !triggered)
             {
@@ -298,7 +336,7 @@ void loop()
                 setState(State::ACTIVE);
                 say(" activated");
                 // triggered!
-        #if USE_WIFI
+#if USE_WIFI
                 HTTP http;
                 if (http.GET(config.getURL()))
                 {
@@ -310,7 +348,7 @@ void loop()
                     say(" the request failed");
                     setState(State::FAIL);
                 }
-        #endif
+#endif
             }
             break;
 
