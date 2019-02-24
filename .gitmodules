@@ -2,9 +2,6 @@
 	path = hardware/esp8266com/esp8266
 	url = https://github.com/liebman/Arduino.git
 	branch = http_update_follow_redirects
-[submodule "libraries/DLog"]
-	path = libraries/DLog
-	url = https://github.com/liebman/DLog.git
 [submodule "libraries/WiFiManager"]
 	path = libraries/WiFiManager
 	url = https://github.com/tzapu/WiFiManager.git

@@ -13,6 +13,8 @@
 #include "AudioOutputI2SNoDAC.h"
 #include <ESP8266SAM.h>
 
+#include "CodeUpdate.h"
+
 #define USE_WIFI 1
 
 
@@ -62,6 +64,7 @@ RGBSeq               seq(rgb, 4);
 State                state = State::BOOT;
 AudioOutputI2SNoDAC* out;
 ESP8266SAM           sam;
+CodeUpdate           update(PIN_RED);
 
 #if 0
 #define say(v)      sam.Say_P(out, (PGM_P)PSTR(v))
@@ -203,13 +206,6 @@ void setClock()
     DBG("Current UTC time: %s", asctime(&timeinfo));
 }
 
-bool startsWith(const char *pre, const char *str)
-{
-    size_t lenpre = strlen(pre),
-           lenstr = strlen(str);
-    return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
-}
-
 void initWiFi(bool force)
 {
     setState(State::CONNECT);
@@ -227,6 +223,7 @@ void initWiFi(bool force)
 
     printMemInfo();
 
+
     // if we are still not connected or force is true then start WiFiManager
     if (force || (WiFi.status() != WL_CONNECTED))
     {
@@ -238,6 +235,8 @@ void initWiFi(bool force)
         wm.addParameter(&url);
         WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
         wm.addParameter(&ntp);
+        WiFiManagerParameter upd("update", "update url", "", 1024);
+        wm.addParameter(&upd);
         printMemInfo();
         DBG("setting config save callback\n");
         wm.setAPCallback([](WiFiManager *)
@@ -253,6 +252,10 @@ void initWiFi(bool force)
             DBG("saving config!");
             config.setURL(url.getValue());
             config.setNTPServer(ntp.getValue());
+            if (!update.setUpdate(upd.getValue()))
+            {
+                DBG("Failed to set update URL!!!!\n");
+            }
             printMemInfo();
         });
         printMemInfo();
@@ -260,6 +263,7 @@ void initWiFi(bool force)
         wm.startConfigPortal("ESP_BUTTON", nullptr);
         printMemInfo();
         DBG("\n\n************************** RESETTING!!!!!!\n\n");
+        DBG_FLUSH();
         ESP.restart();
     }
 }
@@ -271,13 +275,35 @@ void setup()
     for(int i = 0; i < 5;++i) {Serial.println(i); delay(1000);}
     printMemInfo();
 
+    DBG("Starting SPIFFS\n");
+    SPIFFS.begin();
+    printMemInfo();
+
+    if (update.isUpdate())
+    {
+        DBG("starting update\n");
+        seq.stop();
+        rgb.set(COLOR_BLACK);
+        if (!update.update())
+        {
+            DBG("update FAILED\n");
+            seq.run({
+                RGBSeqItem(COLOR_RED,   0.125f),
+                RGBSeqItem(COLOR_BLACK, 0.125f)
+            });
+            while(true)
+            {
+                delay(1000);
+            }
+        }
+        DBG("\n\n************************** RESETTING!!!!!!\n\n");
+        DBG_FLUSH();
+        ESP.restart();
+    }
+
     DBG("Starting SAM\n");
     out = new AudioOutputI2SNoDAC();
     sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
-    printMemInfo();
-
-    DBG("Starting SPIFFS\n");
-    SPIFFS.begin();
     printMemInfo();
 
     DBG("Starting Config\n");
