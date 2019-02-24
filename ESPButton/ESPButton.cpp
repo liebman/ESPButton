@@ -10,19 +10,23 @@
 #include "RGBLED.h"
 #include "RGBSeq.h"
 #include "PolledButton.h"
+#include "CodeUpdate.h"
 #include "AudioOutputI2SNoDAC.h"
 #include <ESP8266SAM.h>
-
-#include "CodeUpdate.h"
+#include "Syslog.h"
 
 #define USE_WIFI 1
-
+#define USE_SYSLOG 0
 
 #ifndef DBG_MAIN
 #define DBG_MAIN 1
 #endif
 #if DBG_MAIN
+#if USE_SYSLOG
+#define DBG(fmt, ...) { if (udp) slog.logf_P(LOG_INFO, (PGM_P)PSTR(fmt), ## __VA_ARGS__ ); else Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ );}
+#else
 #define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#endif
 #define DBG_FLUSH()   Serial.flush()
 #else
 #define DBG(...)
@@ -65,6 +69,10 @@ State                state = State::BOOT;
 AudioOutputI2SNoDAC* out;
 ESP8266SAM           sam;
 CodeUpdate           update(PIN_RED);
+#if USE_SYSLOG
+WiFiUDP             udp;
+Syslog              slog(udp);
+#endif
 
 #if 0
 #define say(v)      sam.Say_P(out, (PGM_P)PSTR(v))
@@ -135,15 +143,10 @@ void setStateColor()
 
 }
 
-void setState(State new_state)
+const char* getStateName(State state)
 {
-    if (state == new_state)
-    {
-        return;
-    }
-
     const char* name = "UNKNOWN";
-    switch(new_state)
+    switch(state)
     {
         case State::BOOT:
             name = "BOOT";
@@ -169,12 +172,20 @@ void setState(State new_state)
         case State::FAIL:
             name = "FAIL";
             break;
+    }
+    return name;
+}
 
+void setState(State new_state)
+{
+    if (state == new_state)
+    {
+        return;
     }
 
+    DBG("setState: %s -> %s\n", getStateName(state), getStateName(new_state));
     state = new_state;
     setStateColor();
-    DBG("setState(%s)\n", name);
     printMemInfo();
 }
 
@@ -252,6 +263,7 @@ void initWiFi(bool force)
             DBG("saving config!");
             config.setURL(url.getValue());
             config.setNTPServer(ntp.getValue());
+            config.save();
             if (!update.setUpdate(upd.getValue()))
             {
                 DBG("Failed to set update URL!!!!\n");
@@ -268,17 +280,8 @@ void initWiFi(bool force)
     }
 }
 
-void setup()
+void maybeUpdate()
 {
-    setStateColor();
-    Serial.begin(76800);
-    for(int i = 0; i < 5;++i) {Serial.println(i); delay(1000);}
-    printMemInfo();
-
-    DBG("Starting SPIFFS\n");
-    SPIFFS.begin();
-    printMemInfo();
-
     if (update.isUpdate())
     {
         DBG("starting update\n");
@@ -300,6 +303,20 @@ void setup()
         DBG_FLUSH();
         ESP.restart();
     }
+}
+
+void setup()
+{
+    setStateColor();
+    Serial.begin(76800);
+    for(int i = 0; i < 5;++i) {Serial.println(i); delay(1000);}
+    printMemInfo();
+
+    DBG("Starting SPIFFS\n");
+    SPIFFS.begin();
+    printMemInfo();
+
+    maybeUpdate();
 
     DBG("Starting SAM\n");
     out = new AudioOutputI2SNoDAC();
@@ -324,9 +341,17 @@ void setup()
     printMemInfo();
 
 #if USE_WIFI
+    DBG("Starting WiFi\n");
     initWiFi(trigger.isPressedNow());
     printMemInfo();
+    DBG("Starting Syslog\n");
+#if USE_SYSLOG
+    slog.server("192.168.1.17", 514);
+    slog.defaultPriority(LOG_USER);
+    printMemInfo();
 #endif
+#endif
+
     setState(State::IDLE);
     say(" the system ready");
 }

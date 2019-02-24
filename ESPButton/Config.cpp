@@ -7,6 +7,16 @@
 
 #include "Config.h"
 
+#ifndef DBG_CONFIG
+#define DBG_CONFIG 1
+#endif
+
+#if DBG_CONFIG
+#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#else
+#define DBG(...)
+#endif
+
 static const char*    CONFIG_FILENAME    = "/ESPButton.dat";
 static const uint32_t CONFIG_MAGIC       = 0xc0c0fefe;
 
@@ -121,32 +131,31 @@ bool Config::load()
     File file = SPIFFS.open(CONFIG_FILENAME, "r");
     if (!file)
     {
-        Serial.printf_P(PSTR("Config::load: failed to open '%s' for reading!\n"), CONFIG_FILENAME);
+        DBG("Config::load: failed to open '%s' for reading!\n", CONFIG_FILENAME);
         return false;
     }
 
     uint32_t magic;
     if (!read(file, magic) || magic != CONFIG_MAGIC)
     {
-        Serial.printf_P(PSTR("Config::load: failed to read magic!\n"));
+        DBG("Config::load: failed to read magic!\n");
         return false;
     }
 
     if (!read(file, _url))
     {
-        Serial.printf_P(PSTR("Config::load: failed to read url!\n"));
+        DBG("Config::load: failed to read url!\n");
         return false;
     }
 
     if (!read(file, _ntp_server))
     {
-        Serial.printf_P(PSTR("Config::load: failed to read ntp_server!\n"));
+        DBG("Config::load: failed to read ntp_server!\n");
         return false;
     }
 
     file.close();
 
-    Serial.printf_P(PSTR("Config::load success!\n"));
     return true;
 }
 
@@ -155,30 +164,30 @@ bool Config::save()
     File file = SPIFFS.open(CONFIG_FILENAME, "w");
     if (!file)
     {
-        Serial.printf_P(PSTR("Config::save: failed to open '%s' for writing!\n"), CONFIG_FILENAME);
+        DBG("Config::save: failed to open '%s' for writing!\n", CONFIG_FILENAME);
         return false;
     }
 
     if (!write(file, CONFIG_MAGIC))
     {
-        Serial.printf_P(PSTR("Config::save: failed to write magic!\n"));
+        DBG("Config::save: failed to write magic!\n");
         return false;
     }
 
     if (!write(file, _url))
     {
-        Serial.printf_P(PSTR("Config::save: failed to write url!\n"));
+        DBG("Config::save: failed to write url!\n");
         return false;
     }
 
     if (!write(file, _ntp_server))
     {
-        Serial.printf_P(PSTR("Config::save: failed to write ntp_server!\n"));
+        DBG("Config::save: failed to write ntp_server!\n");
         return false;
     }
 
     file.close();
 
-    Serial.printf_P(PSTR("Config::save success!\n"));
+    DBG("Config::save success!\n");
     return true;
 }

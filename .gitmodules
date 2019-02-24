@@ -21,3 +21,6 @@
 [submodule "hardware/espressif/esp32"]
 	path = hardware/espressif/esp32
 	url = https://github.com/espressif/arduino-esp32.git
+[submodule "libraries/Syslog"]
+	path = libraries/Syslog
+	url = https://github.com/arcao/Syslog.git

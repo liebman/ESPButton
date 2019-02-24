@@ -8,10 +8,10 @@
 #include "RGBSeq.h"
 
 #ifndef DBG_RGBSEQ
-#define DBG_RGBSEQ 1
+#define DBG_RGBSEQ 0
 #endif
 
-#ifdef DBG_RGBSEQ
+#if DBG_RGBSEQ
 #define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
 #else
 #define DBG(...)
