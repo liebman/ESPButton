@@ -14,26 +14,13 @@
 #include "AudioOutputI2SNoDAC.h"
 #include <ESP8266SAM.h>
 #include "Syslog.h"
+#include <stdarg.h>
 
 #define USE_WIFI 1
 #define USE_SYSLOG 1
 #define USE_UPDATE 1
-#define USE_AUDIO 0
+#define USE_AUDIO 1
 
-#ifndef DBG_MAIN
-#define DBG_MAIN 1
-#endif
-#if DBG_MAIN
-#if USE_SYSLOG
-#define DBG(fmt, ...) { if (udp) slog.logf_P(LOG_INFO, (PGM_P)PSTR(fmt), ## __VA_ARGS__ ); else Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ );}
-#else
-#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
-#endif
-#define DBG_FLUSH()   Serial.flush()
-#else
-#define DBG(...)
-#define DBG_FLUSH()
-#endif
 
 #define PIN_RED      12
 #define PIN_GREEN    13
@@ -68,24 +55,73 @@ PolledButton         trigger(PIN_TRIGGER);
 RGBLED               rgb(PIN_RED, PIN_GREEN, PIN_BLUE);
 RGBSeq               seq(rgb, 4);
 State                state = State::BOOT;
-#if USE_AUDIO
-AudioOutputI2SNoDAC* out;
-#endif
-ESP8266SAM           sam;
 #if USE_UPDATE
 CodeUpdate           update(PIN_RED);
 #endif
 #if USE_SYSLOG
 WiFiUDP             udp;
 Syslog              slog(udp);
+bool                sysloginit = false;
+#endif
+
+#ifndef DBG_MAIN
+#define DBG_MAIN 1
+#endif
+#if DBG_MAIN
+#if USE_SYSLOG
+#if 1
+#define DBG(fmt, ...) DBG_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+void DBG_P(const char* fmt, ...)
+{
+    va_list ap;
+
+    if (sysloginit)
+    {
+        va_start(ap, fmt);
+        slog.vlogf_P(LOG_INFO, fmt, ap);
+        va_end(ap);
+    }
+
+    va_start(ap, fmt);
+    char temp[64];
+    char* buffer = temp;
+    size_t len = vsnprintf_P(temp, sizeof(temp), fmt, ap);
+    va_end(ap);
+    if (len > sizeof(temp) - 1) {
+        buffer = new char[len + 1];
+        if (!buffer) {
+            return;
+        }
+        va_start(ap, fmt);
+        vsnprintf_P(buffer, len + 1, fmt, ap);
+        va_end(ap);
+    }
+    len = Serial.write((const uint8_t*) buffer, len);
+    if (buffer != temp) {
+        delete[] buffer;
+    }
+}
+#else
+#define DBG(fmt, ...) {if (udp) slog.logf_P(LOG_INFO, (PGM_P)PSTR(fmt), ## __VA_ARGS__ ); else Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ );}
+#endif
+#else
+#define DBG(fmt, ...) Serial.printf_P( (PGM_P)PSTR(fmt), ## __VA_ARGS__ )
+#endif
+#define DBG_FLUSH()   Serial.flush()
+#else
+#define DBG(...)
+#define DBG_FLUSH()
 #endif
 
 #if USE_AUDIO
-#if 0
-#define say(v)      sam.Say_P(out, (PGM_P)PSTR(v))
-#else
-#define say(v)      sam.Say(out, (v))
-#endif
+void say(const char* speach)
+{
+    AudioOutputI2SNoDAC out;
+    ESP8266SAM sam;
+    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
+    DBG("saying '%s'\n", speach);
+    sam.Say(&out, speach);
+}
 #else
 #define say(v)
 #endif
@@ -335,8 +371,6 @@ void setup()
 
 #if USE_AUDIO
     DBG("Starting SAM\n");
-    out = new AudioOutputI2SNoDAC();
-    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
     printMemInfo();
 #endif
 
@@ -361,10 +395,11 @@ void setup()
     DBG("Starting WiFi\n");
     initWiFi(trigger.isPressedNow());
     printMemInfo();
-    DBG("Starting Syslog\n");
 #if USE_SYSLOG
+    DBG("Starting Syslog\n");
     slog.server("192.168.1.17", 514);
     slog.defaultPriority(LOG_USER);
+    sysloginit = true;
     printMemInfo();
 #endif
 #endif
