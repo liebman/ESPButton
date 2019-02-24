@@ -38,9 +38,9 @@ RGBLED::~RGBLED()
 {
 }
 
-void RGBLED::set(const RGBColor& color)
+void ICACHE_RAM_ATTR RGBLED::set(const RGBColor& color)
 {
-    DBG("RGBLED::set r:%u g:%u b:%u\n", color.red, color.green, color.blue);
+    //DBG("RGBLED::set r:%u g:%u b:%u\n", color.red, color.green, color.blue);
     analogWrite(_red_pin,   PWM_MAX - color.red);
     analogWrite(_green_pin, PWM_MAX - color.green);
     analogWrite(_blue_pin,  PWM_MAX - color.blue);

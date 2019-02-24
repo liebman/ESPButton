@@ -16,7 +16,9 @@
 #include "Syslog.h"
 
 #define USE_WIFI 1
-#define USE_SYSLOG 0
+#define USE_SYSLOG 1
+#define USE_UPDATE 1
+#define USE_AUDIO 0
 
 #ifndef DBG_MAIN
 #define DBG_MAIN 1
@@ -66,20 +68,27 @@ PolledButton         trigger(PIN_TRIGGER);
 RGBLED               rgb(PIN_RED, PIN_GREEN, PIN_BLUE);
 RGBSeq               seq(rgb, 4);
 State                state = State::BOOT;
+#if USE_AUDIO
 AudioOutputI2SNoDAC* out;
+#endif
 ESP8266SAM           sam;
+#if USE_UPDATE
 CodeUpdate           update(PIN_RED);
+#endif
 #if USE_SYSLOG
 WiFiUDP             udp;
 Syslog              slog(udp);
 #endif
 
+#if USE_AUDIO
 #if 0
 #define say(v)      sam.Say_P(out, (PGM_P)PSTR(v))
 #else
 #define say(v)      sam.Say(out, (v))
 #endif
-
+#else
+#define say(v)
+#endif
 
 void printMemInfo(const char* prefix = "")
 {
@@ -246,8 +255,10 @@ void initWiFi(bool force)
         wm.addParameter(&url);
         WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
         wm.addParameter(&ntp);
+#if USE_UPDATE
         WiFiManagerParameter upd("update", "update url", "", 1024);
         wm.addParameter(&upd);
+#endif
         printMemInfo();
         DBG("setting config save callback\n");
         wm.setAPCallback([](WiFiManager *)
@@ -264,10 +275,12 @@ void initWiFi(bool force)
             config.setURL(url.getValue());
             config.setNTPServer(ntp.getValue());
             config.save();
+#if USE_UPDATE
             if (!update.setUpdate(upd.getValue()))
             {
                 DBG("Failed to set update URL!!!!\n");
             }
+#endif
             printMemInfo();
         });
         printMemInfo();
@@ -282,6 +295,7 @@ void initWiFi(bool force)
 
 void maybeUpdate()
 {
+#if USE_UPDATE
     if (update.isUpdate())
     {
         DBG("starting update\n");
@@ -303,6 +317,7 @@ void maybeUpdate()
         DBG_FLUSH();
         ESP.restart();
     }
+#endif
 }
 
 void setup()
@@ -318,10 +333,12 @@ void setup()
 
     maybeUpdate();
 
+#if USE_AUDIO
     DBG("Starting SAM\n");
     out = new AudioOutputI2SNoDAC();
     sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
     printMemInfo();
+#endif
 
     DBG("Starting Config\n");
     config.begin();

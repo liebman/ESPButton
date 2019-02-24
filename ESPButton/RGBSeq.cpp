@@ -41,7 +41,7 @@ void RGBSeq::stop()
     _timer.detach();
 }
 
-void RGBSeq::timerAction()
+void ICACHE_RAM_ATTR RGBSeq::timerAction()
 {
     if (_item != _items.end())
     {
