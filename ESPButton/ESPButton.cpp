@@ -56,7 +56,7 @@ RGBLED               rgb(PIN_RED, PIN_GREEN, PIN_BLUE);
 RGBSeq               seq(rgb, 4);
 State                state = State::BOOT;
 #if USE_UPDATE
-CodeUpdate           update(PIN_RED);
+CodeUpdate           update(PIN_GREEN);
 #endif
 #if USE_SYSLOG
 WiFiUDP             udp;
