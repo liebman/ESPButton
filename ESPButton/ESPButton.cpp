@@ -405,7 +405,7 @@ void setup()
 #endif
 
     setState(State::IDLE);
-    say(" the system ready");
+    say("the system is ready");
 }
 
 
