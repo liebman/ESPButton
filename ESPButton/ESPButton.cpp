@@ -423,7 +423,7 @@ void loop()
             if (armed && !triggered)
             {
                 setState(State::ARMED);
-                say(" armed");
+                say("armed");
             }
             break;
 
@@ -431,24 +431,24 @@ void loop()
             if (armed == 0)
             {
                 setState(State::IDLE);
-                say(" dis-armed");
+                say("dis-armed");
             }
             else if (armed < triggered)
             {
                 // if the trigger time is after the arm time then trigger!
                 setState(State::ACTIVE);
-                say(" activated");
+                say("activated");
                 // triggered!
 #if USE_WIFI
                 HTTP http;
                 if (http.GET(config.getURL()))
                 {
-                    say(" success");
+                    say("success");
                     setState(State::SUCCESS);
                 }
                 else
                 {
-                    say(" the request failed");
+                    say("the request failed");
                     setState(State::FAIL);
                 }
 #endif
@@ -461,7 +461,7 @@ void loop()
             if (armed == 0 && triggered == 0)
             {
                 setState(State::IDLE);
-                say(" dis-armed");
+                say("system ready");
             }
             break;
     }
