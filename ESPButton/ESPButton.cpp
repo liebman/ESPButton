@@ -34,8 +34,16 @@
 #define COLOR_YELLOW {255, 255, 0}
 #define COLOR_ORANGE {255, 127, 0}
 
-static const char     DEFAULT_URL[]        = "https://jigsaw.w3.org/HTTP/connection.html"; // "https://jigsaw.w3.org/HTTP/300/301.html";
-static const char     DEFAULT_NTP_SERVER[] = "0.zoddotcom.pool.ntp.org";
+static const char     DEFAULT_URL[]              = "https://jigsaw.w3.org/HTTP/connection.html"; // "https://jigsaw.w3.org/HTTP/300/301.html";
+static const char     DEFAULT_NTP_SERVER[]       = "0.zoddotcom.pool.ntp.org";
+static const char     DEFAULT_PHRASE_STARTUP[]   = "the system is ready";
+static const char     DEFAULT_PHRASE_ARMED[]     = "armed";
+static const char     DEFAULT_PHRASE_DISARMED[]  = "disarmed";
+static const char     DEFAULT_PHRASE_ACTIVATED[] = "activated";
+static const char     DEFAULT_PHRASE_SUCCESS[]   = "success";
+static const char     DEFAULT_PHRASE_FAILED[]    = "failed";
+static const char     DEFAULT_PHRASE_READY[]     = "ready";
+static const uint16_t SYSLOG_PORT = 514;
 
 enum class State
 {
@@ -114,6 +122,15 @@ void DBG_P(const char* fmt, ...)
 #endif
 
 #if USE_AUDIO
+void say(Phrase phrase)
+{
+    AudioOutputI2SNoDAC out;
+    ESP8266SAM sam;
+    sam.SetVoice(ESP8266SAM::SAMVoice::VOICE_ELF);
+    DBG("phrase %d '%s'\n",phrase, config.getPhrase(phrase));
+    sam.Say(&out, config.getPhrase(phrase));
+}
+
 void say(const char* speach)
 {
     AudioOutputI2SNoDAC out;
@@ -262,6 +279,31 @@ void setClock()
     DBG("Current UTC time: %s", asctime(&timeinfo));
 }
 
+void initConfig()
+{
+    DBG("Starting Config\n");
+    config.begin();
+    printMemInfo();
+
+    DBG("loading config\n");
+    if (!config.load())
+    {
+      DBG("failed to load config, setting defaults!\n");
+      config.setURL(DEFAULT_URL);
+      config.setNTPServer(DEFAULT_NTP_SERVER);
+      config.setPhrase(Phrase::STARTUP, DEFAULT_PHRASE_STARTUP);
+      config.setPhrase(Phrase::ARMED, DEFAULT_PHRASE_ARMED);
+      config.setPhrase(Phrase::DISARMED, DEFAULT_PHRASE_DISARMED);
+      config.setPhrase(Phrase::ACTIVATED, DEFAULT_PHRASE_ACTIVATED);
+      config.setPhrase(Phrase::SUCCESS, DEFAULT_PHRASE_SUCCESS);
+      config.setPhrase(Phrase::FAILED, DEFAULT_PHRASE_FAILED);
+      config.setPhrase(Phrase::READY, DEFAULT_PHRASE_READY);
+      if (!config.save())
+      {
+          DBG("Failed to save config!!!\n");
+      }
+    }
+}
 void initWiFi(bool force)
 {
     setState(State::CONNECT);
@@ -291,6 +333,24 @@ void initWiFi(bool force)
         wm.addParameter(&url);
         WiFiManagerParameter ntp("ntp", "NTP Server", config.getNTPServer(), 64);
         wm.addParameter(&ntp);
+        WiFiManagerParameter startup("startup", "startup", config.getPhrase(Phrase::STARTUP), 64);
+        wm.addParameter(&startup);
+        WiFiManagerParameter armed("armed", "armed", config.getPhrase(Phrase::ARMED), 64);
+        wm.addParameter(&armed);
+        WiFiManagerParameter disarmed("disarmed", "disarmed", config.getPhrase(Phrase::DISARMED), 64);
+        wm.addParameter(&disarmed);
+        WiFiManagerParameter activated("activated", "activated", config.getPhrase(Phrase::ACTIVATED), 64);
+        wm.addParameter(&activated);
+        WiFiManagerParameter success("success", "success", config.getPhrase(Phrase::SUCCESS), 64);
+        wm.addParameter(&success);
+        WiFiManagerParameter failed("failed", "failed", config.getPhrase(Phrase::FAILED), 64);
+        wm.addParameter(&failed);
+        WiFiManagerParameter ready("ready", "ready", config.getPhrase(Phrase::READY), 64);
+        wm.addParameter(&ready);
+#if USE_SYSLOG
+        WiFiManagerParameter log("log", "Syslog", config.getSyslog(), 64);
+        wm.addParameter(&log);
+#endif
 #if USE_UPDATE
         WiFiManagerParameter upd("update", "update url", "", 1024);
         wm.addParameter(&upd);
@@ -310,6 +370,16 @@ void initWiFi(bool force)
             DBG("saving config!");
             config.setURL(url.getValue());
             config.setNTPServer(ntp.getValue());
+            config.setPhrase(Phrase::STARTUP,   startup.getValue());
+            config.setPhrase(Phrase::ARMED,     armed.getValue());
+            config.setPhrase(Phrase::DISARMED,  disarmed.getValue());
+            config.setPhrase(Phrase::ACTIVATED, activated.getValue());
+            config.setPhrase(Phrase::SUCCESS,   success.getValue());
+            config.setPhrase(Phrase::FAILED,    failed.getValue());
+            config.setPhrase(Phrase::READY,     ready.getValue());
+#if USE_SYSLOG
+            config.setSyslog(log.getValue());
+#endif
             config.save();
 #if USE_UPDATE
             if (!update.setUpdate(upd.getValue()))
@@ -360,35 +430,16 @@ void setup()
 {
     setStateColor();
     Serial.begin(76800);
-    for(int i = 0; i < 5;++i) {Serial.println(i); delay(1000);}
     printMemInfo();
 
     DBG("Starting SPIFFS\n");
     SPIFFS.begin();
     printMemInfo();
 
+    DBG("Checking for configured update\n");
     maybeUpdate();
 
-#if USE_AUDIO
-    DBG("Starting SAM\n");
-    printMemInfo();
-#endif
-
-    DBG("Starting Config\n");
-    config.begin();
-    printMemInfo();
-
-    DBG("loading config\n");
-    if (!config.load())
-    {
-      DBG("failed to load config, setting defaults!\n");
-      config.setURL(DEFAULT_URL);
-      config.setNTPServer(DEFAULT_NTP_SERVER);
-      if (!config.save())
-      {
-          DBG("Failed to save config!!!\n");
-      }
-    }
+    initConfig();
     printMemInfo();
 
 #if USE_WIFI
@@ -396,16 +447,20 @@ void setup()
     initWiFi(trigger.isPressedNow());
     printMemInfo();
 #if USE_SYSLOG
-    DBG("Starting Syslog\n");
-    slog.server("192.168.1.17", 514);
-    slog.defaultPriority(LOG_USER);
-    sysloginit = true;
-    printMemInfo();
+    const char* sl_server = config.getSyslog();
+    if (strlen(sl_server) > 0)
+    {
+        DBG("Starting Syslog\n");
+        slog.server(sl_server, SYSLOG_PORT);
+        slog.defaultPriority(LOG_USER);
+        sysloginit = true;
+        printMemInfo();
+    }
 #endif
 #endif
 
     setState(State::IDLE);
-    say("the system is ready");
+    say(Phrase::STARTUP);
 }
 
 
@@ -423,7 +478,7 @@ void loop()
             if (armed && !triggered)
             {
                 setState(State::ARMED);
-                say("armed");
+                say(Phrase::ARMED);
             }
             break;
 
@@ -431,24 +486,24 @@ void loop()
             if (armed == 0)
             {
                 setState(State::IDLE);
-                say("dis-armed");
+                say(Phrase::DISARMED);
             }
             else if (armed < triggered)
             {
                 // if the trigger time is after the arm time then trigger!
                 setState(State::ACTIVE);
-                say("activated");
+                say(Phrase::ACTIVATED);
                 // triggered!
 #if USE_WIFI
                 HTTP http;
                 if (http.GET(config.getURL()))
                 {
-                    say("success");
+                    say(Phrase::SUCCESS);
                     setState(State::SUCCESS);
                 }
                 else
                 {
-                    say("the request failed");
+                    say(Phrase::FAILED);
                     setState(State::FAIL);
                 }
 #endif
@@ -461,7 +516,7 @@ void loop()
             if (armed == 0 && triggered == 0)
             {
                 setState(State::IDLE);
-                say("system ready");
+                say(Phrase::READY);
             }
             break;
     }

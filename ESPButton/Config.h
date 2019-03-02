@@ -10,6 +10,22 @@
 #include "Arduino.h"
 #include "FS.h"
 
+// enum must use consecutive values!
+enum class Phrase
+{
+    STARTUP = 0,
+    ARMED,
+    DISARMED,
+    ACTIVATED,
+    SUCCESS,
+    FAILED,
+    READY,
+    // special values (not really part of enum)
+    FIRST = STARTUP,
+    LAST = READY,
+    SIZE = LAST + 1
+};
+
 class Config
 {
 public:
@@ -20,6 +36,10 @@ public:
     void        setURL(const char* url);
     const char* getNTPServer();
     void        setNTPServer(const char* ntp);
+    const char* getSyslog();
+    void        setSyslog(const char* host);
+    const char* getPhrase(Phrase pid);
+    void        setPhrase(Phrase pid, const char* phrase);
     bool        save();
     bool        load();
 
@@ -30,9 +50,10 @@ protected:
     bool        write(File& file, String& str);
 
 private:
-    String      _url;
-    String      _ntp_server;
-
+    String _url;
+    String _ntp_server;
+    String _syslog;
+    String _phrase[(int)Phrase::SIZE];
 };
 
 #endif /* CONFIG_H_ */
