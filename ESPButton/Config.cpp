@@ -19,7 +19,7 @@
 
 static const char*    CONFIG_FILENAME    = "/ESPButton.dat";
 static const uint32_t CONFIG_MAGIC       = 0xc0c0fefe;
-static const uint16_t CONFIG_VERSION     = 0x0000;
+static const uint16_t CONFIG_VERSION     = 0x0001;
 
 enum class ValueType : uint8_t
 {
@@ -202,6 +202,13 @@ bool Config::load()
     }
     DBG("Config::load: NTP: '%s'\n", _ntp_server.c_str());
 
+    if (!read(file, _syslog))
+    {
+        DBG("Config::save: failed to read syslog!\n");
+        return false;
+    }
+    DBG("Config::load: syslog: '%s'\n", _syslog.c_str());
+
     for (int pid = (int)Phrase::FIRST; pid < (int)Phrase::SIZE; pid++)
     {
         if (!read(file, _phrase[pid]))
@@ -253,6 +260,13 @@ bool Config::save()
         return false;
     }
     DBG("Config::save: NTP: '%s'\n", _ntp_server.c_str());
+
+    if (!write(file, _syslog))
+    {
+        DBG("Config::save: failed to write syslog!\n");
+        return false;
+    }
+    DBG("Config::save: syslog: '%s'\n", _syslog.c_str());
 
     for (int pid = (int)Phrase::FIRST; pid < (int)Phrase::SIZE; pid++)
     {

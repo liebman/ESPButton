@@ -42,7 +42,7 @@ static const char     DEFAULT_PHRASE_DISARMED[]  = "disarmed";
 static const char     DEFAULT_PHRASE_ACTIVATED[] = "activated";
 static const char     DEFAULT_PHRASE_SUCCESS[]   = "success";
 static const char     DEFAULT_PHRASE_FAILED[]    = "failed";
-static const char     DEFAULT_PHRASE_READY[]     = "ready";
+static const char     DEFAULT_PHRASE_READY[]     = "system ready";
 static const uint16_t SYSLOG_PORT = 514;
 
 enum class State
@@ -310,6 +310,7 @@ void initWiFi(bool force)
 
     if (!force)
     {
+        WiFi.mode(WIFI_STA);
         WiFi.begin(/*SSID_NAME, SSID_PASS*/);
         // wait 30 up to seconds for connect
         uint32_t end = millis()+30000;
@@ -391,7 +392,8 @@ void initWiFi(bool force)
         });
         printMemInfo();
         DBG("starting config portal\n");
-        wm.startConfigPortal("ESP_BUTTON", nullptr);
+        String id = "ESPButton" + String(ESP.getChipId(), 16);
+        wm.startConfigPortal(id.c_str(), nullptr);
         printMemInfo();
         DBG("\n\n************************** RESETTING!!!!!!\n\n");
         DBG_FLUSH();
@@ -448,6 +450,7 @@ void setup()
     printMemInfo();
 #if USE_SYSLOG
     const char* sl_server = config.getSyslog();
+    DBG("Syslog server: '%s'\n", sl_server);
     if (strlen(sl_server) > 0)
     {
         DBG("Starting Syslog\n");
