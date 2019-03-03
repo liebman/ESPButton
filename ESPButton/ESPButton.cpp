@@ -397,6 +397,7 @@ void initWiFi(bool force)
         printMemInfo();
         DBG("\n\n************************** RESETTING!!!!!!\n\n");
         DBG_FLUSH();
+        Serial.end();
         ESP.restart();
     }
 }
@@ -423,6 +424,7 @@ void maybeUpdate()
         }
         DBG("\n\n************************** RESETTING!!!!!!\n\n");
         DBG_FLUSH();
+        Serial.end();
         ESP.restart();
     }
 #endif
@@ -432,7 +434,10 @@ void setup()
 {
     setStateColor();
     Serial.begin(76800);
+    DBG("\n\nStartup!\n");
     printMemInfo();
+
+    DBG("Reset reason: %d (%s)\n", ESP.getResetInfoPtr()->reason, ESP.getResetReason().c_str());
 
     DBG("Starting SPIFFS\n");
     SPIFFS.begin();
@@ -446,7 +451,7 @@ void setup()
 
 #if USE_WIFI
     DBG("Starting WiFi\n");
-    initWiFi(trigger.isPressedNow());
+    initWiFi(trigger.isPressedNow() && (ESP.getResetInfoPtr()->reason != REASON_SOFT_RESTART));
     printMemInfo();
 #if USE_SYSLOG
     const char* sl_server = config.getSyslog();
