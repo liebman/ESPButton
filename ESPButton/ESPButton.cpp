@@ -20,7 +20,7 @@
 #define USE_SYSLOG 1
 #define USE_UPDATE 1
 #define USE_AUDIO 1
-
+#define USE_NTP 1
 
 #define PIN_RED      12
 #define PIN_GREEN    13
@@ -304,6 +304,7 @@ void initConfig()
       }
     }
 }
+
 void initWiFi(bool force)
 {
     setState(State::CONNECT);
@@ -443,9 +444,6 @@ void setup()
     SPIFFS.begin();
     printMemInfo();
 
-    DBG("Checking for configured update\n");
-    maybeUpdate();
-
     initConfig();
     printMemInfo();
 
@@ -453,6 +451,10 @@ void setup()
     DBG("Starting WiFi\n");
     initWiFi(trigger.isPressedNow() && (ESP.getResetInfoPtr()->reason != REASON_SOFT_RESTART));
     printMemInfo();
+
+    DBG("Checking for configured update\n");
+    maybeUpdate();
+
 #if USE_SYSLOG
     const char* sl_server = config.getSyslog();
     DBG("Syslog server: '%s'\n", sl_server);
@@ -464,6 +466,10 @@ void setup()
         sysloginit = true;
         printMemInfo();
     }
+#endif
+
+#if USE_NTP
+    setClock();
 #endif
 #endif
 
