@@ -371,6 +371,12 @@ void initWiFi(bool force)
             printMemInfo();
             DBG("saving config!");
             config.setURL(url.getValue());
+            const char* ntp_server = ntp.getValue();
+            if (strlen(ntp_server) < 1)
+            {
+                // use default if empty
+                ntp_server = DEFAULT_NTP_SERVER;
+            }
             config.setNTPServer(ntp.getValue());
             config.setPhrase(Phrase::STARTUP,   startup.getValue());
             config.setPhrase(Phrase::ARMED,     armed.getValue());

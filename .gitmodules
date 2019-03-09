@@ -14,8 +14,7 @@
 	url = https://github.com/earlephilhower/ESP8266Audio.git
 [submodule "libraries/ESP8266SAM"]
 	path = libraries/ESP8266SAM
-	url = https://github.com/liebman/ESP8266SAM.git
-	branch = save-static-mem
+	url = https://github.com/earlephilhower/ESP8266SAM.git
 [submodule "libraries/ESP8266_Spiram"]
 	path = libraries/ESP8266_Spiram
 	url = https://github.com/Gianbacchio/ESP8266_Spiram.git
