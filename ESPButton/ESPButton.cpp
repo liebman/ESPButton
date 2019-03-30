@@ -312,7 +312,15 @@ void initWiFi(bool force)
     if (!force)
     {
         WiFi.mode(WIFI_STA);
-        WiFi.begin(/*SSID_NAME, SSID_PASS*/);
+        if (strlen(config.getSSID()) > 0)
+        {
+            DBG("using SSID:%s PSK:%s from config\n", config.getSSID(), config.getPSK());
+            WiFi.begin(config.getSSID(), config.getPSK());
+        }
+        else
+        {
+            WiFi.begin(/*SSID_NAME, SSID_PASS*/);
+        }
         // wait 30 up to seconds for connect
         uint32_t end = millis()+30000;
         DBG("wait for connect.\n");
@@ -365,7 +373,8 @@ void initWiFi(bool force)
             printMemInfo();
             setState(State::CONFIG);
         });
-        wm.setSaveConfigCallback([&]()
+        // save the values in the config file as soon as they are set.
+        wm.setSaveParamsCallback([&]()
         {
             DBG("save config callback!");
             printMemInfo();
@@ -388,14 +397,21 @@ void initWiFi(bool force)
 #if USE_SYSLOG
             config.setSyslog(log.getValue());
 #endif
+            // Grab and save the SSID and password to be saved in the config file.
+            // We do this because in some noisy environments you can't connect to
+            // the configuration portal.  This allows you to set the WiFi credentials
+            // when you can't actually connect, then reset the device to connect.
+            // Its ugly but it works.
+            config.setSSID(wm.server->arg("s").c_str());
+            config.setPSK(wm.server->arg("p").c_str());
             config.save();
+            printMemInfo();
 #if USE_UPDATE
             if (!update.setUpdate(upd.getValue()))
             {
                 DBG("Failed to set update URL!!!!\n");
             }
 #endif
-            printMemInfo();
         });
         printMemInfo();
         DBG("starting config portal\n");

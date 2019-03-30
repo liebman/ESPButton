@@ -40,6 +40,10 @@ public:
     void        setSyslog(const char* host);
     const char* getPhrase(Phrase pid);
     void        setPhrase(Phrase pid, const char* phrase);
+    const char* getSSID();
+    void        setSSID(const char* ssid);
+    const char* getPSK();
+    void        setPSK(const char* psk);
     bool        save();
     bool        load();
 
@@ -54,6 +58,8 @@ private:
     String _ntp_server;
     String _syslog;
     String _phrase[(int)Phrase::SIZE];
+    String _ssid;
+    String _psk;
 };
 
 #endif /* CONFIG_H_ */

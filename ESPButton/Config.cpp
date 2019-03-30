@@ -93,6 +93,26 @@ void Config::setPhrase(Phrase pid, const char* phrase)
     _phrase[(int)pid] = phrase;
 }
 
+const char* Config::getSSID()
+{
+    return _ssid.c_str();
+}
+
+void Config::setSSID(const char* ssid)
+{
+    _ssid = ssid;
+}
+
+const char* Config::getPSK()
+{
+    return _psk.c_str();
+}
+
+void Config::setPSK(const char* psk)
+{
+    _psk = psk;
+}
+
 bool Config::read(File& file, uint32_t& val)
 {
     ValueType type;
@@ -204,7 +224,7 @@ bool Config::load()
 
     if (!read(file, _syslog))
     {
-        DBG("Config::save: failed to read syslog!\n");
+        DBG("Config::load: failed to read syslog!\n");
         return false;
     }
     DBG("Config::load: syslog: '%s'\n", _syslog.c_str());
@@ -217,6 +237,19 @@ bool Config::load()
             return false;
         }
         DBG("Config::load: phrase[%d]: '%s'\n",pid,  _phrase[pid].c_str());
+    }
+
+    if (!read(file, _ssid))
+    {
+        DBG("Config::load: failed to read SSID!\n");
+        return false;
+    }
+    DBG("Config::load: SSID: '%s'\n", _ssid.c_str());
+
+    if (!read(file, _psk))
+    {
+        DBG("Config::load: failed to read PSK!\n");
+        return false;
     }
 
     file.close();
@@ -276,6 +309,19 @@ bool Config::save()
             return false;
         }
         DBG("Config::save: phrase[%d]: '%s'\n",pid,  _phrase[pid].c_str());
+    }
+
+    if (!write(file, _ssid))
+    {
+        DBG("Config::save: failed to write ssid!\n");
+        return false;
+    }
+    DBG("Config::save: SSID: '%s'\n", _ssid.c_str());
+
+    if (!write(file, _psk))
+    {
+        DBG("Config::save: failed to write PSK!\n");
+        return false;
     }
 
     file.close();
